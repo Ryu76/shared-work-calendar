@@ -1161,14 +1161,6 @@ def delete_task_attachment(task_id: int, attachment_id: int, request: Request, u
     return {"ok": True}
 
 
-@app.get("/api/tasks/{task_id}/history")
-def get_task_history(task_id: int, user: sqlite3.Row=Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c:
-        accessible_task(c, task_id, user)
-        return task_history(c, task_id)
-
-
 @app.get("/api/calendar")
 def calendar(month: str, user: sqlite3.Row=Depends(current_user)):
     user = password_changed_user(user)
@@ -1356,6 +1348,7 @@ app.include_router(
             lambda: now(),
             audit,
             task_changes,
+            task_history,
         ),
         current_user,
         password_changed_user,

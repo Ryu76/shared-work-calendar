@@ -91,4 +91,8 @@ def create_router(
             request.client.host if request.client else None,
         )
 
+    @router.get("/api/tasks/{task_id}/history")
+    def get_task_history(task_id: int, user: Any = Depends(current_user)):
+        return service.get_task_history(task_id, password_changed_user(user))
+
     return router

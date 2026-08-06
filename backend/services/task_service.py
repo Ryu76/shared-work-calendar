@@ -26,6 +26,7 @@ class TaskService:
         now: Callable[[], str],
         audit: Callable[..., None],
         task_changes: Callable[[dict, dict], list[str]],
+        task_history: Callable[[Any, int], list[dict]],
     ) -> None:
         self._db = db
         self._task_query_sql = task_query_sql
@@ -36,6 +37,7 @@ class TaskService:
         self._now = now
         self._audit = audit
         self._task_changes = task_changes
+        self._task_history = task_history
 
     def create_task(self, payload: Any, user: Any, ip_address: str | None) -> dict:
         """Create a task with the unchanged validation, audit, and response view."""
@@ -285,3 +287,9 @@ class TaskService:
                 ip_address,
             )
             return {"ok": True}
+
+    def get_task_history(self, task_id: int, user: Any) -> list[dict]:
+        """Return the existing audit history after task-level authorization."""
+        with self._db() as connection:
+            self._accessible_task(connection, task_id, user)
+            return self._task_history(connection, task_id)
