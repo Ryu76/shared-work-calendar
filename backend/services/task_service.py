@@ -493,9 +493,7 @@ class TaskService:
         try:
             with self._db() as connection:
                 self._accessible_task(connection, task_id, user)
-                image = connection.execute(
-                    "SELECT * FROM task_images WHERE id=? AND task_id=?", (image_id, task_id)
-                ).fetchone()
+                image = self._repository.task_image(connection, task_id, image_id)
                 if not image:
                     raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
                 source_path = self._private_image_path(image["storage_key"])
@@ -513,25 +511,17 @@ class TaskService:
                 except OSError:
                     pass
                 created_path = destination
-                connection.execute(
-                    "INSERT INTO task_image_edits(task_id,image_id,source_storage_key,result_storage_key,direction,edited_by,created_at) VALUES(?,?,?,?,?,?,?)",
-                    (
-                        task_id,
-                        image_id,
-                        image["storage_key"],
-                        storage_key,
-                        payload.direction,
-                        user["id"],
-                        self._now(),
-                    ),
+                updated = self._repository.revise_task_image(
+                    connection,
+                    task_id,
+                    image_id,
+                    image["storage_key"],
+                    storage_key,
+                    payload.direction,
+                    user["id"],
+                    self._now(),
+                    len(edited_content),
                 )
-                connection.execute(
-                    "UPDATE task_images SET storage_key=?,size_bytes=? WHERE id=?",
-                    (storage_key, len(edited_content), image_id),
-                )
-                updated = connection.execute(
-                    "SELECT * FROM task_images WHERE id=?", (image_id,)
-                ).fetchone()
                 result = self._image_view(updated)
                 self._audit(
                     connection,

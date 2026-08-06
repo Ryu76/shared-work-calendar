@@ -1457,3 +1457,26 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move authorized task-image edit/revision persistence into `TaskRepository`, then run focused image-edit authorization coverage and the full regression suite.
+
+## Codex Execution PRD — task image-edit/revision repository persistence slice (2026-08-06 22:19:28 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: task image deletion and history persistence plus Dashboard/Notification/Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the small persistence-only `TaskRepository.revise_task_image` operation and moved only the existing task-image revision insert, image metadata update, and updated-image read from `TaskService.edit_task_image` into it. The pre-existing image lookup now reuses `TaskRepository.task_image`.
+- Preserved `POST /api/tasks/{task_id}/images/{image_id}/edit` URL/status/request-response schema; authorization before private-byte access; 404 behavior; bounded image rotation; private revision file creation/cleanup/modes; non-destructive source retention; image response projection; audit behavior; transaction/rollback behavior; SQLCipher behavior; database schema/data; DPAPI/key material; uploads; secrets; `.env`; notification delivery; deployment; and external-service behavior.
+- `TaskService.edit_task_image` delegates all task-image persistence to `TaskRepository` and contains no `.execute(` call. `routers/tasks.py` remains SQL-free; image edit and item-route URLs remain unchanged.
+
+Modified Files:
+- `backend/repositories/task_repository.py` — adds non-destructive image-revision persistence.
+- `backend/services/task_service.py` — delegates only image lookup/revision persistence while retaining authorization, private-file lifecycle, transform, response, and audit behavior.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused image-edit authorization/revision regression: `python -m unittest test_main.CalendarApiTests.test_private_image_rotation_is_authorized_non_destructive_and_audited -v && python -m compileall -q app/main.py services/task_service.py repositories/task_repository.py routers/tasks.py test_main.py && python -c "...AST-scoped image-edit query-absence and repository-operation assertions..." && git diff --check` (from `backend`): **PASS** — 1 test in **2.791s**; compilation, repository-boundary, and whitespace checks passed. It covers unauthorized editing rejection, rendered rotation, non-destructive source retention, audit/history, and cleanup on deletion.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...AST-scoped image-edit repository boundary and SQL-free task router assertions..." && git diff --check` (from `backend`): **PASS** — all **29 tests** passed in **97.697s**; JavaScript syntax, Python compilation, repository boundary, SQL-free task router, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains task image deletion and history SQL; `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/repositories/task_repository.py` and `backend/services/task_service.py`. These source paths and this progress file contain no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move authorized task-image deletion persistence into `TaskRepository`, then run focused image authorization/deletion coverage and the full regression suite.

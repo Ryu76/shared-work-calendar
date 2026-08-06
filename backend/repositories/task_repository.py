@@ -222,6 +222,37 @@ class TaskRepository:
         ).fetchone()
 
     @staticmethod
+    def revise_task_image(
+        connection: Any,
+        task_id: int,
+        image_id: int,
+        source_storage_key: str,
+        result_storage_key: str,
+        direction: str,
+        edited_by: int,
+        created_at: str,
+        size_bytes: int,
+    ) -> Any:
+        """Persist one non-destructive image revision and return its updated image row."""
+        connection.execute(
+            "INSERT INTO task_image_edits(task_id,image_id,source_storage_key,result_storage_key,direction,edited_by,created_at) VALUES(?,?,?,?,?,?,?)",
+            (
+                task_id,
+                image_id,
+                source_storage_key,
+                result_storage_key,
+                direction,
+                edited_by,
+                created_at,
+            ),
+        )
+        connection.execute(
+            "UPDATE task_images SET storage_key=?,size_bytes=? WHERE id=?",
+            (result_storage_key, size_bytes, image_id),
+        )
+        return connection.execute("SELECT * FROM task_images WHERE id=?", (image_id,)).fetchone()
+
+    @staticmethod
     def attachment_count(connection: Any, task_id: int) -> int:
         """Return the current number of document/video attachments on one task."""
         return connection.execute(
