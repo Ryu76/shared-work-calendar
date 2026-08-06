@@ -318,3 +318,28 @@ Risk:
 
 Next Phase:
 - Extract the user endpoint group as the next small vertical slice behind a SQL-free router and service, preserving all existing API behavior, then run focused user lifecycle/password tests and the full regression suite.
+
+## Codex Execution PRD — user router/service slice (2026-08-06 09:12:33 UTC)
+Completed:
+- Extracted the unchanged user-account endpoint group into `backend/routers/users.py`: `GET /api/assignees`, `POST /api/me/password`, and `GET`/`POST`/`PATCH` `/api/admin/users`. The router handles only HTTP validation/dependencies and delegates to `UserService`; it contains no SQL.
+- Added `backend/services/user_service.py`, preserving active-assignee selection, current-password verification, Argon2id hashing, forced password-change clearing, administrator-only lifecycle checks, last-active-admin protection, session invalidation after administrative credential/role/activation changes, exact Korean errors, and audit history.
+- Registered the router on the same FastAPI application after the existing authentication/password-change/admin dependencies. Route verification confirms the application title remains `Shared Work Calendar MVP`, the route count remains **44**, and every moved method/path pair remains registered.
+- This is an internal boundary move only: no API URL, request/response shape, database schema/data, DB key/DPAPI file, upload, secret, `.env`, notification behavior, deployment, or external service changed.
+
+Modified Files:
+- `backend/app/main.py` — registers the extracted user router and removes only the moved endpoint bodies.
+- `backend/routers/users.py` — SQL-free HTTP boundary for the existing user endpoints.
+- `backend/services/user_service.py` — injected user-account business service.
+- `PROGRESS.md` — this verified status entry.
+
+Tests:
+- Focused user/auth/task-boundary regression: `python -m unittest test_main.CalendarApiTests.test_first_login_requires_password_change_and_blocks_work_apis test_main.CalendarApiTests.test_admin_user_lifecycle_validation_authorization_and_last_admin_protection test_main.CalendarApiTests.test_task_detail_update_history_and_deletion_authorization -v` (from `backend`): **PASS** — 3 tests in **7.217s**.
+- Router contract and syntax verification: `python -m compileall -q app/main.py routers/users.py services/user_service.py main.py && python -c "...route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/users.py` (from `backend`): **PASS** — title unchanged, 44 routes, all five moved method/path pairs present, and no SQL/DB execution token in the router.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: **PASS** — all **27 tests** in **108.654s**; JavaScript syntax, Python compilation, and whitespace checks passed.
+
+Risk:
+- Task, Dashboard, and Admin endpoint groups remain in `backend/app/main.py`. Repository extraction, global exception handling, response helpers, middleware, validators, notification layering, and scheduler separation remain pending, so the Codex Execution PRD completion conditions are not met.
+- The working tree contains only verified source/progress changes from this slice; no database, DPAPI/key, plaintext backup, upload, secret, or `.env` file is included.
+
+Next Phase:
+- Extract the task endpoint group as the next small vertical slice behind a SQL-free router and task service, preserving all existing API behavior, then run focused task authorization/CRUD tests and the full regression suite.

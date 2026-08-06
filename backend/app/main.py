@@ -35,22 +35,24 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from database import DB_PATH, connect, sqlite3
     from schemas.requests import (
         ContactIn, ContactPatch, ImageEditIn, NotificationPreferencesIn,
-        OrganizationIn, OrganizationPatch, PasswordChangeIn, TaskIn, TaskUpdateIn,
-        UserIn, UserPatch,
+        OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from routers.auth import create_router as create_auth_router
+    from routers.users import create_router as create_users_router
     from services.auth_service import AuthService
+    from services.user_service import UserService
 except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository root.
     from backend.core.config import load_settings
     from backend.core.logging import configure_logging
     from backend.database import DB_PATH, connect, sqlite3
     from backend.schemas.requests import (
         ContactIn, ContactPatch, ImageEditIn, NotificationPreferencesIn,
-        OrganizationIn, OrganizationPatch, PasswordChangeIn, TaskIn, TaskUpdateIn,
-        UserIn, UserPatch,
+        OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from backend.routers.auth import create_router as create_auth_router
+    from backend.routers.users import create_router as create_users_router
     from backend.services.auth_service import AuthService
+    from backend.services.user_service import UserService
 
 # Keep the original backend-root configuration boundary after moving this module
 # beneath ``backend/app``. This preserves static and private-upload locations.
@@ -356,6 +358,14 @@ app.include_router(
         current_user,
     )
 )
+app.include_router(
+    create_users_router(
+        UserService(db, verify_password, hash_password, now, SESSIONS, audit, sqlite3.IntegrityError),
+        current_user,
+        admin_required,
+        password_changed_user,
+    )
+)
 
 
 def accessible_task(c: sqlite3.Connection, task_id: int, user: sqlite3.Row) -> sqlite3.Row:
@@ -448,65 +458,6 @@ def read_notification(notification_id: int, user: sqlite3.Row = Depends(current_
             raise HTTPException(status_code=404, detail="알림을 찾을 수 없습니다.")
         return {"ok": True}
 
-
-@app.get("/api/assignees")
-def assignees(user: sqlite3.Row = Depends(current_user)):
-    """Active users are selectable as task assignees; no task data is exposed."""
-    password_changed_user(user)
-    with db() as c:
-        return [dict(row) for row in c.execute(
-            "SELECT id,name,login_id,role FROM users WHERE is_active=1 ORDER BY name,login_id"
-        )]
-
-
-@app.post("/api/me/password")
-def change_my_password(payload: PasswordChangeIn, request: Request, user: sqlite3.Row = Depends(current_user)):
-    if not verify_password(payload.current_password, user["password_hash"]):
-        raise HTTPException(status_code=400, detail="현재 비밀번호를 확인하세요.")
-    if payload.current_password == payload.new_password:
-        raise HTTPException(status_code=422, detail="새 비밀번호는 현재 비밀번호와 달라야 합니다.")
-    with db() as c:
-        c.execute(
-            "UPDATE users SET password_hash=?,must_change_password=0,updated_at=? WHERE id=?",
-            (hash_password(payload.new_password), now(), user["id"]),
-        )
-        audit(c, user["id"], "PASSWORD_CHANGED", "USER", user["id"], after={"must_change_password": False}, ip=request.client.host if request.client else None)
-    return {"ok": True, "must_change_password": False}
-
-@app.get("/api/admin/users")
-def users(_: sqlite3.Row = Depends(admin_required)):
-    with db() as c:
-        return [dict(row) | {"is_active": bool(row["is_active"]), "must_change_password": bool(row["must_change_password"])} for row in c.execute("SELECT id,login_id,name,role,is_active,must_change_password,created_at,updated_at FROM users ORDER BY is_active DESC,name")]
-
-@app.post("/api/admin/users", status_code=201)
-def create_user(payload: UserIn, request: Request, user: sqlite3.Row = Depends(admin_required)):
-    with db() as c:
-        try:
-            cur = c.execute("INSERT INTO users(login_id,password_hash,name,role,is_active,must_change_password,created_at,updated_at) VALUES(?,?,?,?,1,1,?,?)", (payload.login_id, hash_password(payload.temporary_password), payload.name, payload.role, now(), now()))
-        except sqlite3.IntegrityError:
-            raise HTTPException(status_code=409, detail="이미 사용 중인 로그인 ID입니다.")
-        result = {"id": cur.lastrowid, "login_id": payload.login_id, "name": payload.name, "role": payload.role}
-        audit(c, user["id"], "USER_CREATED", "USER", cur.lastrowid, after=result, ip=request.client.host if request.client else None)
-        return result
-
-@app.patch("/api/admin/users/{user_id}")
-def patch_user(user_id: int, payload: UserPatch, request: Request, actor: sqlite3.Row = Depends(admin_required)):
-    with db() as c:
-        target = c.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
-        if not target: raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-        new_role = payload.role or target["role"]
-        new_active = int(target["is_active"] if payload.is_active is None else payload.is_active)
-        if target["role"] == "ADMIN" and target["is_active"] and (new_role != "ADMIN" or not new_active):
-            active_admins = c.execute("SELECT COUNT(*) FROM users WHERE role='ADMIN' AND is_active=1").fetchone()[0]
-            if active_admins <= 1: raise HTTPException(status_code=409, detail="마지막 활성 관리자 계정은 변경하거나 비활성화할 수 없습니다.")
-        before = {"name": target["name"], "role": target["role"], "is_active": bool(target["is_active"])}
-        c.execute("UPDATE users SET name=?,role=?,is_active=?,password_hash=COALESCE(?,password_hash),must_change_password=CASE WHEN ? IS NULL THEN must_change_password ELSE 1 END,updated_at=? WHERE id=?", (payload.name or target["name"], new_role, new_active, hash_password(payload.password) if payload.password else None, payload.password, now(), user_id))
-        if payload.password or payload.role is not None or payload.is_active is not None:
-            for token, session in list(SESSIONS.items()):
-                if session[0] == user_id: SESSIONS.pop(token, None)
-        after = {"name": payload.name or target["name"], "role": new_role, "is_active": bool(new_active)}
-        audit(c, actor["id"], "USER_UPDATED", "USER", user_id, before, after, request.client.host if request.client else None)
-        return after | {"id": user_id}
 
 def organization_view(row: sqlite3.Row) -> dict:
     out = dict(row)
