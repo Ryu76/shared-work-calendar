@@ -920,25 +920,6 @@ def export_tasks_xlsx(
     )
 
 
-@app.post("/api/tasks", status_code=201)
-def create_task(payload: TaskIn, request: Request, user: sqlite3.Row=Depends(current_user)):
-    user = password_changed_user(user)
-    received = payload.received_date or today_in_seoul()
-    due = payload.due_date
-    if due is not None and due < received:
-        raise HTTPException(status_code=422, detail="마감일은 접수일보다 빠를 수 없습니다.")
-    completed = payload.completed_date or (today_in_seoul() if payload.status == "COMPLETED" else None)
-    if payload.status != "COMPLETED": completed = None
-    with db() as c:
-        active = {r["id"] for r in c.execute("SELECT id FROM users WHERE is_active=1")}
-        if not set(payload.assignee_ids).issubset(active): raise HTTPException(status_code=422, detail="비활성 또는 존재하지 않는 처리자가 포함되어 있습니다.")
-        contact_id = contact_from_input(c, payload.contact, user["id"], request.client.host if request.client else None)
-        cur = c.execute("INSERT INTO tasks(requester_contact_id,status,description,received_date,completed_date,due_date,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)", (contact_id,payload.status,payload.description.strip(),str(received),str(completed) if completed else None,str(due) if due else None,user["id"],now(),now()))
-        for assignee_id in payload.assignee_ids: c.execute("INSERT INTO task_assignees(task_id,user_id,assigned_at) VALUES(?,?,?)", (cur.lastrowid,assignee_id,now()))
-        task = c.execute("SELECT * FROM tasks WHERE id=?", (cur.lastrowid,)).fetchone()
-        audit(c,user["id"],"TASK_CREATED","TASK",cur.lastrowid,after=task_view(c,task),ip=request.client.host if request.client else None)
-        return task_view(c,task)
-
 @app.post("/api/tasks/{task_id}/images", status_code=201)
 async def upload_task_images(
     task_id: int, request: Request, images: list[UploadFile] = File(...), user: sqlite3.Row = Depends(current_user)
@@ -1443,7 +1424,16 @@ def audit_logs(
 # precedence over the legacy ``/api/tasks/{task_id}`` parameter route.
 app.include_router(
     create_task_router(
-        TaskService(db, task_query_sql, task_view, accessible_task),
+        TaskService(
+            db,
+            task_query_sql,
+            task_view,
+            accessible_task,
+            contact_from_input,
+            lambda: today_in_seoul(),
+            lambda: now(),
+            audit,
+        ),
         current_user,
         password_changed_user,
     )

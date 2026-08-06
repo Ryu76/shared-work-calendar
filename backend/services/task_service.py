@@ -21,11 +21,78 @@ class TaskService:
         task_query_sql: Callable[[Any], tuple[str, list]],
         task_view: Callable[[Any, Any], dict],
         accessible_task: Callable[[Any, int, Any], Any],
+        contact_from_input: Callable[..., int],
+        today_in_seoul: Callable[[], date],
+        now: Callable[[], str],
+        audit: Callable[..., None],
     ) -> None:
         self._db = db
         self._task_query_sql = task_query_sql
         self._task_view = task_view
         self._accessible_task = accessible_task
+        self._contact_from_input = contact_from_input
+        self._today_in_seoul = today_in_seoul
+        self._now = now
+        self._audit = audit
+
+    def create_task(self, payload: Any, user: Any, ip_address: str | None) -> dict:
+        """Create a task with the unchanged validation, audit, and response view."""
+        received = payload.received_date or self._today_in_seoul()
+        due = payload.due_date
+        if due is not None and due < received:
+            raise HTTPException(status_code=422, detail="마감일은 접수일보다 빠를 수 없습니다.")
+        completed = payload.completed_date or (
+            self._today_in_seoul() if payload.status == "COMPLETED" else None
+        )
+        if payload.status != "COMPLETED":
+            completed = None
+        with self._db() as connection:
+            active = {
+                row["id"]
+                for row in connection.execute("SELECT id FROM users WHERE is_active=1")
+            }
+            if not set(payload.assignee_ids).issubset(active):
+                raise HTTPException(
+                    status_code=422,
+                    detail="비활성 또는 존재하지 않는 처리자가 포함되어 있습니다.",
+                )
+            contact_id = self._contact_from_input(
+                connection, payload.contact, user["id"], ip_address
+            )
+            cursor = connection.execute(
+                "INSERT INTO tasks(requester_contact_id,status,description,received_date,completed_date,due_date,created_by,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (
+                    contact_id,
+                    payload.status,
+                    payload.description.strip(),
+                    str(received),
+                    str(completed) if completed else None,
+                    str(due) if due else None,
+                    user["id"],
+                    self._now(),
+                    self._now(),
+                ),
+            )
+            for assignee_id in payload.assignee_ids:
+                connection.execute(
+                    "INSERT INTO task_assignees(task_id,user_id,assigned_at) VALUES(?,?,?)",
+                    (cursor.lastrowid, assignee_id, self._now()),
+                )
+            task = connection.execute(
+                "SELECT * FROM tasks WHERE id=?", (cursor.lastrowid,)
+            ).fetchone()
+            result = self._task_view(connection, task)
+            self._audit(
+                connection,
+                user["id"],
+                "TASK_CREATED",
+                "TASK",
+                cursor.lastrowid,
+                after=result,
+                ip=ip_address,
+            )
+            return result
 
     def list_tasks(
         self,

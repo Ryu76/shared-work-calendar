@@ -4,11 +4,12 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Callable, Literal
 
-from fastapi import APIRouter, Depends, Query
-
+from fastapi import APIRouter, Depends, Query, Request, status
 try:
+    from schemas.requests import TaskIn
     from services.task_service import TaskService
 except ModuleNotFoundError:
+    from backend.schemas.requests import TaskIn
     from backend.services.task_service import TaskService
 
 
@@ -19,6 +20,18 @@ def create_router(
 ) -> APIRouter:
     """Build legacy task-read routes without placing SQL in the HTTP layer."""
     router = APIRouter()
+
+    @router.post("/api/tasks", status_code=status.HTTP_201_CREATED)
+    def create_task(
+        payload: TaskIn,
+        request: Request,
+        user: Any = Depends(current_user),
+    ):
+        return service.create_task(
+            payload,
+            password_changed_user(user),
+            request.client.host if request.client else None,
+        )
 
     @router.get("/api/tasks")
     def list_tasks(
