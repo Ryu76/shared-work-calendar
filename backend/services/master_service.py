@@ -11,11 +11,13 @@ class MasterService:
         self,
         db: Callable[[], ContextManager[Any]],
         organization_view: Callable[[Any], dict],
+        contact_view: Callable[[Any, Any], dict],
         now: Callable[[], str],
         audit: Callable[..., None],
     ) -> None:
         self._db = db
         self._organization_view = organization_view
+        self._contact_view = contact_view
         self._now = now
         self._audit = audit
 
@@ -55,3 +57,14 @@ class MasterService:
                 ip=ip_address,
             )
             return result
+
+    def contacts(self, query: str) -> list[dict]:
+        """Return the existing active request-contact autocomplete response."""
+        with self._db() as connection:
+            rows = connection.execute(
+                "SELECT rc.* FROM request_contacts rc JOIN organizations o ON o.id=rc.organization_id "
+                "WHERE rc.is_active=1 AND o.is_active=1 AND (rc.name LIKE ? OR o.name LIKE ?) "
+                "ORDER BY rc.name, o.name LIMIT 20",
+                (f"%{query.strip()}%", f"%{query.strip()}%"),
+            )
+            return [self._contact_view(connection, row) for row in rows]

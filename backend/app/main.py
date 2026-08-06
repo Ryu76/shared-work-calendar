@@ -663,18 +663,6 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
     return output.getvalue()
 
 
-@app.get("/api/request-contacts")
-def contacts(q: str="", user: sqlite3.Row=Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c:
-        rows = c.execute(
-            "SELECT rc.* FROM request_contacts rc JOIN organizations o ON o.id=rc.organization_id "
-            "WHERE rc.is_active=1 AND o.is_active=1 AND (rc.name LIKE ? OR o.name LIKE ?) "
-            "ORDER BY rc.name, o.name LIMIT 20", (f"%{q.strip()}%", f"%{q.strip()}%"),
-        )
-        return [contact_view(c, row) for row in rows]
-
-
 @app.post("/api/request-contacts", status_code=201)
 def create_contact(payload: ContactIn, request: Request, user: sqlite3.Row=Depends(current_user)):
     user = password_changed_user(user)
@@ -827,7 +815,7 @@ app.include_router(
 )
 app.include_router(
     create_master_router(
-        MasterService(db, organization_view, now, audit),
+        MasterService(db, organization_view, contact_view, now, audit),
         current_user,
         password_changed_user,
     )

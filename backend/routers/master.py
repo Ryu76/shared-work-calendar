@@ -38,4 +38,9 @@ def create_router(
             request.client.host if request.client else None,
         )
 
+    @router.get("/api/request-contacts")
+    def contacts(q: str = "", user: Any = Depends(current_user)):
+        password_changed_user(user)
+        return service.contacts(q)
+
     return router

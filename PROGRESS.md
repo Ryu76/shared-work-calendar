@@ -819,4 +819,28 @@ Risk:
 - Before this progress update, `git status --short --untracked-files=all` listed only the four verified non-sensitive source/test files. No database, DPAPI/key file, plaintext backup, private upload, secret, or `.env` is included.
 
 Next Phase:
+
+## Codex Execution PRD — request-contact autocomplete router/service slice (2026-08-06 15:05:29 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: remaining master/admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `GET /api/request-contacts` active request-contact autocomplete endpoint into the existing SQL-free `backend/routers/master.py` boundary and delegated database lookup/projection to `MasterService.contacts`.
+- Preserved authenticated first-password-change enforcement; the existing `q` query parameter/default; whitespace-trimmed name-or-organization partial matching; contact/organization active-only filtering; name and organization ordering; 20-row limit; contact response projection; and the existing API URL/request-response schema. Database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/static verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one `GET /api/request-contacts` route. `backend/routers/master.py` contains no SQL operation or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved request-contact autocomplete endpoint body and injects the existing contact projection helper into `MasterService`.
+- `backend/routers/master.py` — adds the unchanged request-contact autocomplete HTTP endpoint with existing authentication behavior.
+- `backend/services/master_service.py` — adds the extracted active request-contact lookup operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused master regression: `python -m unittest test_main.CalendarApiTests.test_request_master_management_authorization_lifecycle_and_audit -v` (from `backend`): **PASS** — 1 test in **2.312s**. It covers request-contact autocomplete along with master authorization, lifecycle, and audit behavior.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/master.py services/master_service.py main.py && python -c "...route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/master.py && git diff --check` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, exactly one request-contact autocomplete route, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...package route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/master.py && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **92.149s**; JavaScript syntax, Python compilation, package import, unchanged 44-route contract, and whitespace checks passed.
+
+Risk:
+- `TaskService`, `DashboardService`, `UserService`, `AuthService`, `NotificationService`, and `MasterService` still contain repository SQL as intentional intermediate service boundaries. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the three verified non-sensitive source files. A tracked sensitive-path scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
 - Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice behind an SQL-free router/service boundary, then run focused coverage and the full regression suite.
