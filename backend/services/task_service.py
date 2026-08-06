@@ -549,20 +549,15 @@ class TaskService:
         """Delete one authorized image and its retained private source revision."""
         with self._db() as connection:
             self._accessible_task(connection, task_id, user)
-            image = connection.execute(
-                "SELECT * FROM task_images WHERE id=? AND task_id=?", (image_id, task_id)
-            ).fetchone()
+            image = self._repository.task_image(connection, task_id, image_id)
             if not image:
                 raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
             result = self._image_view(image)
             paths = {self._private_image_path(image["storage_key"])}
             paths.update(
-                self._private_image_path(row["source_storage_key"])
-                for row in connection.execute(
-                    "SELECT source_storage_key FROM task_image_edits WHERE image_id=?", (image_id,)
-                )
+                self._private_image_path(storage_key)
+                for storage_key in self._repository.delete_task_image(connection, image_id)
             )
-            connection.execute("DELETE FROM task_images WHERE id=?", (image_id,))
             self._audit(
                 connection,
                 user["id"],

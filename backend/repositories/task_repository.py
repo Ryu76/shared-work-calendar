@@ -253,6 +253,18 @@ class TaskRepository:
         return connection.execute("SELECT * FROM task_images WHERE id=?", (image_id,)).fetchone()
 
     @staticmethod
+    def delete_task_image(connection: Any, image_id: int) -> list[str]:
+        """Delete image metadata and return every private image key retained for it."""
+        source_keys = [
+            row["source_storage_key"]
+            for row in connection.execute(
+                "SELECT source_storage_key FROM task_image_edits WHERE image_id=?", (image_id,)
+            )
+        ]
+        connection.execute("DELETE FROM task_images WHERE id=?", (image_id,))
+        return source_keys
+
+    @staticmethod
     def attachment_count(connection: Any, task_id: int) -> int:
         """Return the current number of document/video attachments on one task."""
         return connection.execute(
