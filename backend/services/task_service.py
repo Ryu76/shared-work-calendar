@@ -263,3 +263,25 @@ class TaskService:
                     ip_address,
                 )
             return after
+
+    def delete_task(self, task_id: int, user: Any, ip_address: str | None) -> dict:
+        """Soft-delete a task with the established admin audit and cleanup behavior."""
+        with self._db() as connection:
+            task = self._accessible_task(connection, task_id, user)
+            before = self._task_view(connection, task)
+            connection.execute(
+                "UPDATE tasks SET deleted_at=?,deleted_by=?,updated_at=? WHERE id=?",
+                (self._now(), user["id"], self._now(), task_id),
+            )
+            connection.execute("DELETE FROM notification_outbox WHERE task_id=?", (task_id,))
+            self._audit(
+                connection,
+                user["id"],
+                "TASK_DELETED",
+                "TASK",
+                task_id,
+                before,
+                None,
+                ip_address,
+            )
+            return {"ok": True}

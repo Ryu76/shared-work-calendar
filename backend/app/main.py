@@ -1169,15 +1169,6 @@ def get_task_history(task_id: int, user: sqlite3.Row=Depends(current_user)):
         return task_history(c, task_id)
 
 
-@app.delete("/api/tasks/{task_id}")
-def delete_task(task_id: int, request: Request, user: sqlite3.Row=Depends(admin_required)):
-    with db() as c:
-        task=accessible_task(c,task_id,user); before=task_view(c,task)
-        c.execute("UPDATE tasks SET deleted_at=?,deleted_by=?,updated_at=? WHERE id=?",(now(),user["id"],now(),task_id))
-        c.execute("DELETE FROM notification_outbox WHERE task_id=?", (task_id,))
-        audit(c,user["id"],"TASK_DELETED","TASK",task_id,before,None,request.client.host if request.client else None)
-        return {"ok":True}
-
 @app.get("/api/calendar")
 def calendar(month: str, user: sqlite3.Row=Depends(current_user)):
     user = password_changed_user(user)
@@ -1368,5 +1359,6 @@ app.include_router(
         ),
         current_user,
         password_changed_user,
+        admin_required,
     )
 )

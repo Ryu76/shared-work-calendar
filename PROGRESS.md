@@ -418,3 +418,28 @@ Risk:
 
 Next Phase:
 - Continue the task group with the smallest remaining behavior-preserving endpoint slice (delete, history/calendar, or one attachment operation) behind the existing SQL-free router/service boundary, then run focused task coverage and the full regression suite.
+
+## Codex Execution PRD — task delete router/service slice (2026-08-06 10:24:36 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: task upload/history/calendar endpoints, Dashboard/Admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `DELETE /api/tasks/{task_id}` endpoint into the existing SQL-free `backend/routers/tasks.py` boundary and delegated soft deletion to `TaskService.delete_task`.
+- Preserved the administrator-only dependency (including forced first-password change), task existence/access behavior, soft-delete fields, private local notification-outbox cleanup, audit event/payload/client IP, response status and `{\"ok\": true}` schema. API URLs, request/response schemas, database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/import verification confirms `Shared Work Calendar MVP` still has 44 routes and registers `DELETE /api/tasks/{task_id}`. The task router contains no `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved task-delete endpoint body and injects the existing administrator dependency into the task router.
+- `backend/routers/tasks.py` — adds the unchanged DELETE task HTTP endpoint with existing dependency behavior.
+- `backend/services/task_service.py` — adds the injected task soft-delete business operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused deletion regression: `python -m unittest test_main.CalendarApiTests.test_task_detail_update_history_and_deletion_authorization -v` (from `backend`): **PASS** — 1 test in **3.732s**. It verifies member deletion is forbidden, administrator soft deletion succeeds, and later task retrieval is 404.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/tasks.py services/task_service.py main.py && python -c "...route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/tasks.py && git diff --check` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, DELETE route registration, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: **PASS** — all **27 tests** passed in **93.761s**; JavaScript syntax, Python compilation, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains repository SQL as an intentional intermediate service boundary. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Only verified source/progress files are modified. `git status --short --untracked-files=all` lists `backend/app/main.py`, `backend/routers/tasks.py`, and `backend/services/task_service.py` before this progress update; no database, DPAPI/key file, plaintext backup, private upload, secret, or `.env` is included.
+
+Next Phase:
+- Continue the task group with the smallest remaining behavior-preserving endpoint slice (history or calendar read) behind the existing SQL-free router/service boundary, then run focused task coverage and the full regression suite.

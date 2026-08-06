@@ -17,6 +17,7 @@ def create_router(
     service: TaskService,
     current_user: Callable[..., Any],
     password_changed_user: Callable[[Any], Any],
+    admin_required: Callable[..., Any],
 ) -> APIRouter:
     """Build legacy task-read routes without placing SQL in the HTTP layer."""
     router = APIRouter()
@@ -75,6 +76,18 @@ def create_router(
             task_id,
             payload,
             password_changed_user(user),
+            request.client.host if request.client else None,
+        )
+
+    @router.delete("/api/tasks/{task_id}")
+    def delete_task(
+        task_id: int,
+        request: Request,
+        user: Any = Depends(admin_required),
+    ):
+        return service.delete_task(
+            task_id,
+            user,
             request.client.host if request.client else None,
         )
 
