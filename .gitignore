@@ -1,0 +1,33 @@
+# Runtime databases and all plaintext recovery copies
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Database key material (DPAPI-protected or recovery keys)
+*.dpapi
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Runtime secrets; commit only explicitly redacted examples
+.env
+.env.*
+!.env.example
+
+# Private user-uploaded content
+backend/private_uploads/
+
+# Python/tooling artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Browser/coverage/test artifacts
+playwright-report/
+test-results/
+coverage/
+htmlcov/
