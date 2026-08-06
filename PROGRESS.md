@@ -1024,3 +1024,28 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining authentication-adjacent behavior-preserving slice (move active-user lookup from `current_user` into a repository boundary), then run focused authorization coverage and the full regression suite.
+
+## Codex Execution PRD — user-assignee repository slice (2026-08-06 17:28:20 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: most service SQL is still not repository-only, global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization are pending.
+- Added the small persistence-only `UserRepository` boundary and moved only the active assignee-selection query from `UserService.assignees` into `UserRepository.active_assignees`.
+- Preserved the existing `GET /api/assignees` URL, authentication and first-password-change enforcement in its router, active-user-only filtering, name/login-ID ordering, list response projection, SQLCipher transaction behavior, API schemas, database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior.
+- The unchanged 44-route application contract contains exactly one `GET /api/assignees` route. `UserService.assignees` now delegates to the repository and no longer contains the extracted active-assignee SQL query.
+
+Modified Files:
+- `backend/repositories/user_repository.py` — adds the active-assignee persistence operation.
+- `backend/services/user_service.py` — injects and delegates only the active-assignee database lookup to `UserRepository`.
+- `backend/app/main.py` — wires `UserRepository` into the existing user-service composition root.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused user/task regression: `python -m unittest test_main.CalendarApiTests.test_task_detail_update_history_and_deletion_authorization -v` (from `backend`): **PASS** — 1 test in **3.843s**. It exercises the unchanged authenticated assignee-selection response before creating and updating a joint task, as well as task authorization/history/deletion behavior.
+- Static/contract verification: compilation; package title/44-route/single-assignees-route assertion; repository delegation and extracted-query-absence assertions; and `git diff --check`: **PASS**.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...44-route assertion..." && ... && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **92.544s**; JavaScript syntax, Python compilation, unchanged 44-route/single-assignees-route contract, repository delegation check, and whitespace checks passed.
+
+Risk:
+- `UserService` still contains password-change, user-list, user-create, and user-update SQL; `TaskService`, `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before the progress update, `git status --short --untracked-files=all` listed only the three verified non-sensitive source files. A changed-path scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with one small behavior-preserving user-account persistence operation (preferably the password-change update) behind the existing service boundary, then run focused coverage and the full regression suite.

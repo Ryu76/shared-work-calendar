@@ -11,6 +11,11 @@ from typing import Any, Callable, ContextManager, MutableMapping
 
 from fastapi import HTTPException
 
+try:
+    from repositories.user_repository import UserRepository
+except ModuleNotFoundError:
+    from backend.repositories.user_repository import UserRepository
+
 
 class UserService:
     """Handle user selection, password changes, and administrator user lifecycle."""
@@ -24,6 +29,7 @@ class UserService:
         sessions: MutableMapping[str, tuple[int, datetime]],
         audit: Callable[..., None],
         integrity_error: type[Exception],
+        repository: UserRepository,
     ) -> None:
         self._db = db
         self._verify_password = verify_password
@@ -32,16 +38,12 @@ class UserService:
         self._sessions = sessions
         self._audit = audit
         self._integrity_error = integrity_error
+        self._repository = repository
 
     def assignees(self) -> list[dict]:
         """Return the unchanged active-user task-assignee selection response."""
         with self._db() as connection:
-            return [
-                dict(row)
-                for row in connection.execute(
-                    "SELECT id,name,login_id,role FROM users WHERE is_active=1 ORDER BY name,login_id"
-                )
-            ]
+            return [dict(row) for row in self._repository.active_assignees(connection)]
 
     def change_password(self, payload: Any, user: Any, ip_address: str | None) -> dict:
         if not self._verify_password(payload.current_password, user["password_hash"]):
