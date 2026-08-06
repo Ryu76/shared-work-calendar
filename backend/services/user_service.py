@@ -118,9 +118,7 @@ class UserService:
             new_role = payload.role or target["role"]
             new_active = int(target["is_active"] if payload.is_active is None else payload.is_active)
             if target["role"] == "ADMIN" and target["is_active"] and (new_role != "ADMIN" or not new_active):
-                active_admins = connection.execute(
-                    "SELECT COUNT(*) FROM users WHERE role='ADMIN' AND is_active=1"
-                ).fetchone()[0]
+                active_admins = self._repository.active_admin_count(connection)
                 if active_admins <= 1:
                     raise HTTPException(status_code=409, detail="마지막 활성 관리자 계정은 변경하거나 비활성화할 수 없습니다.")
             before = {

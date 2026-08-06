@@ -35,6 +35,12 @@ class UserRepository:
         return connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
 
     @staticmethod
+    def active_admin_count(connection: Any) -> int:
+        return connection.execute(
+            "SELECT COUNT(*) FROM users WHERE role='ADMIN' AND is_active=1"
+        ).fetchone()[0]
+
+    @staticmethod
     def update_password(
         connection: Any, password_hash: str, updated_at: str, user_id: int
     ) -> None:
