@@ -6,6 +6,7 @@ view shape, and error responses without importing the ASGI application.
 """
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Any, Callable, ContextManager
 
@@ -293,3 +294,23 @@ class TaskService:
         with self._db() as connection:
             self._accessible_task(connection, task_id, user)
             return self._task_history(connection, task_id)
+
+    def get_received_date_calendar(self, month: str, user: Any) -> list[dict]:
+        """Return all authorized live tasks received during a validated month."""
+        if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+            raise HTTPException(
+                status_code=422,
+                detail="month는 유효한 YYYY-MM 형식이어야 합니다.",
+            )
+        year, month_number = map(int, month.split("-"))
+        first_day = date(year, month_number, 1)
+        next_month = (
+            date(year + 1, 1, 1)
+            if month_number == 12
+            else date(year, month_number + 1, 1)
+        )
+        with self._db() as connection:
+            sql, params = self._task_query_sql(user)
+            sql += " AND t.received_date>=? AND t.received_date<? ORDER BY t.received_date"
+            params.extend([str(first_day), str(next_month)])
+            return [self._task_view(connection, row) for row in connection.execute(sql, params)]

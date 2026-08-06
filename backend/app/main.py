@@ -1161,20 +1161,6 @@ def delete_task_attachment(task_id: int, attachment_id: int, request: Request, u
     return {"ok": True}
 
 
-@app.get("/api/calendar")
-def calendar(month: str, user: sqlite3.Row=Depends(current_user)):
-    user = password_changed_user(user)
-    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
-        raise HTTPException(status_code=422,detail="month는 유효한 YYYY-MM 형식이어야 합니다.")
-    year, month_number = map(int, month.split("-"))
-    first_day = date(year, month_number, 1)
-    next_month = date(year + 1, 1, 1) if month_number == 12 else date(year, month_number + 1, 1)
-    with db() as c:
-        # The received-date calendar is the operational month view and must include
-        # every live task status, including completed work rendered in its green state.
-        sql,params=task_query_sql(user); sql += " AND t.received_date>=? AND t.received_date<? ORDER BY t.received_date"; params.extend([str(first_day), str(next_month)])
-        return [task_view(c,row) for row in c.execute(sql,params)]
-
 @app.get("/api/completed-calendar")
 def completed_calendar(month: str, user: sqlite3.Row=Depends(current_user)):
     """Return only caller-authorized completed tasks for a strictly validated month."""
