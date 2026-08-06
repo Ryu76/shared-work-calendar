@@ -246,6 +246,50 @@ class CalendarApiTests(unittest.TestCase):
         self.assertEqual(rejected_update.status_code, 422, rejected_update.text)
         self.assertIn("비활성", rejected_update.json()["detail"])
 
+    def test_task_create_preserves_multiple_assignees_and_audit_result(self):
+        """Task-create repository persistence preserves the API response and audit view."""
+        admin = self.admin()
+        admin_id = client.get("/api/me", headers=admin).json()["id"]
+        partner_id = self.create_member(admin, "task_create_repository_partner")
+        created = client.post(
+            "/api/tasks",
+            headers=admin,
+            json={
+                "assignee_ids": [admin_id, partner_id],
+                "contact": {
+                    "name": "생성 저장소 요청",
+                    "phone": "010-8181-8181",
+                    "organization": "생성 저장소 기관",
+                },
+                "description": "다중 처리자 생성 저장소 검증",
+                "status": "RECEIVED",
+                "received_date": "2034-08-06",
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        task = created.json()
+        self.assertEqual(task["description"], "다중 처리자 생성 저장소 검증")
+        self.assertEqual({assignee["id"] for assignee in task["assignees"]}, {admin_id, partner_id})
+        with main.db() as connection:
+            persisted = connection.execute(
+                "SELECT id,description,received_date FROM tasks WHERE id=?", (task["id"],)
+            ).fetchone()
+            assigned = connection.execute(
+                "SELECT user_id FROM task_assignees WHERE task_id=?", (task["id"],)
+            ).fetchall()
+        self.assertEqual(dict(persisted), {
+            "id": task["id"],
+            "description": "다중 처리자 생성 저장소 검증",
+            "received_date": "2034-08-06",
+        })
+        self.assertEqual({row["user_id"] for row in assigned}, {admin_id, partner_id})
+        audit = client.get("/api/admin/audit-logs", headers=admin)
+        self.assertEqual(audit.status_code, 200, audit.text)
+        self.assertTrue(any(
+            row["action"] == "TASK_CREATED" and row["target_id"] == str(task["id"])
+            for row in audit.json()
+        ))
+
     def test_completed_status_sets_and_clears_completed_date(self):
         admin = self.admin()
         admin_id = client.get("/api/me", headers=admin).json()["id"]

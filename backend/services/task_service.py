@@ -102,36 +102,27 @@ class TaskService:
             contact_id = self._contact_from_input(
                 connection, payload.contact, user["id"], ip_address
             )
-            cursor = connection.execute(
-                "INSERT INTO tasks(requester_contact_id,status,description,received_date,completed_date,due_date,created_by,created_at,updated_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?)",
-                (
-                    contact_id,
-                    payload.status,
-                    payload.description.strip(),
-                    str(received),
-                    str(completed) if completed else None,
-                    str(due) if due else None,
-                    user["id"],
-                    self._now(),
-                    self._now(),
-                ),
+            task_id, task = self._repository.create_task(
+                connection,
+                contact_id,
+                payload.status,
+                payload.description.strip(),
+                str(received),
+                str(completed) if completed else None,
+                str(due) if due else None,
+                user["id"],
+                self._now(),
+                self._now(),
+                payload.assignee_ids,
+                [self._now() for _ in payload.assignee_ids],
             )
-            for assignee_id in payload.assignee_ids:
-                connection.execute(
-                    "INSERT INTO task_assignees(task_id,user_id,assigned_at) VALUES(?,?,?)",
-                    (cursor.lastrowid, assignee_id, self._now()),
-                )
-            task = connection.execute(
-                "SELECT * FROM tasks WHERE id=?", (cursor.lastrowid,)
-            ).fetchone()
             result = self._task_view(connection, task)
             self._audit(
                 connection,
                 user["id"],
                 "TASK_CREATED",
                 "TASK",
-                cursor.lastrowid,
+                task_id,
                 after=result,
                 ip=ip_address,
             )

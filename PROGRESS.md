@@ -1244,3 +1244,28 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move the task-create insert/read persistence into `TaskRepository`, then run focused task creation/authorization coverage and the full regression suite.
+
+## Codex Execution PRD — task-create repository persistence slice (2026-08-06 19:50:43 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: Task/Dashboard/Notification/Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the small persistence-only `TaskRepository.create_task` operation and moved only the task-create insert, task-assignee inserts, and created-task row lookup from `TaskService.create_task` into it.
+- Preserved `POST /api/tasks` URL/status/request-response schema; existing input and active-assignee validation; contact/master/audit transaction behavior; multi-assignee behavior; status/date rules; SQLCipher behavior; database schema/data; DPAPI/key material; uploads; secrets; `.env`; notification delivery; deployment; and external-service behavior.
+- `TaskService.create_task` delegates the extracted persistence to `TaskRepository`; the extracted `INSERT INTO tasks`, `INSERT INTO task_assignees`, and created-task `SELECT` are absent from the create operation in the service. The application task routes remain unchanged and `routers/tasks.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/task_repository.py` — adds task-create, task-assignee, and created-task-row persistence.
+- `backend/services/task_service.py` — delegates only the task-create persistence operation through `TaskRepository` while retaining validation, contact resolution, response projection, audit, and transaction behavior.
+- `backend/test_main.py` — adds HTTP/database/audit regression coverage for a multiple-assignee task creation response and persistence result.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused task-create regression: `python -m unittest test_main.CalendarApiTests.test_task_create_preserves_multiple_assignees_and_audit_result -v` (from `backend`): **PASS** — 1 test in **1.473s**. It covers the unchanged `201` task response, multiple assignees, persisted task and assignment rows, and `TASK_CREATED` audit record.
+- Static/boundary verification: `python -m compileall -q app/main.py services/task_service.py repositories/task_repository.py test_main.py`; a create-operation repository-delegation/extracted-SQL-absence assertion; and `git diff --check`: **PASS**.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...task-create repository boundary..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/tasks.py && git diff --check` (from `backend`): **PASS** — all **29 tests** passed in **114.497s**; JavaScript syntax, Python compilation, extracted-SQL boundary, SQL-free task router, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains task update/delete, attachment, image, calendar, and listing SQL; `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/repositories/task_repository.py`, `backend/services/task_service.py`, and `backend/test_main.py`. The changed-path sensitive-file scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move the task-update write/read persistence into `TaskRepository`, then run focused task-update/authorization coverage and the full regression suite.
