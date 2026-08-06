@@ -1293,3 +1293,27 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move the task soft-delete/outbox-cleanup persistence into `TaskRepository`, then run focused deletion/authorization coverage and the full regression suite.
+
+## Codex Execution PRD — task soft-delete repository persistence slice (2026-08-06 20:22:26 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: Task/Dashboard/Notification/Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the small persistence-only `TaskRepository.soft_delete_task` operation and moved only the task soft-delete write and local notification-outbox cleanup from `TaskService.delete_task` into it.
+- Preserved `DELETE /api/tasks/{task_id}` URL/status/response schema; administrator and forced-password-change dependency; existing task lookup/authorization; `deleted_at`, `deleted_by`, and `updated_at` values; notification cleanup; `TASK_DELETED` audit action/before payload/actor/IP behavior; transaction behavior; SQLCipher behavior; database schema/data; DPAPI/key material; uploads; secrets; `.env`; notification delivery; deployment; and external-service behavior.
+- `TaskService.delete_task` delegates the extracted persistence to `TaskRepository`; the extracted task update and notification-outbox delete SQL are absent from the delete operation. The application still registers 44 routes with exactly one `DELETE /api/tasks/{task_id}` route, and `routers/tasks.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/task_repository.py` — adds soft-delete and notification-outbox cleanup persistence.
+- `backend/services/task_service.py` — delegates only task deletion persistence through `TaskRepository` while retaining authorization, task view, audit, and transaction behavior.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused deletion/notification regressions: `python -m unittest test_main.CalendarApiTests.test_task_detail_update_history_and_deletion_authorization test_main.CalendarApiTests.test_due_dates_local_notification_outbox_preferences_and_authorization -v` (from `backend`): **PASS** — 2 tests in **6.413s**. They cover administrator task deletion authorization/history and local due-notification outbox behavior.
+- Full regression: `python -m unittest discover -s . -p 'test*.py' -v` (from `backend`): **PASS** — all **29 tests** passed in **96.102s**.
+- Static/contract verification: `node --check ../web/app.js`; Python compilation; application title/44-route/single-delete-route assertion; AST-scoped delete-service repository-delegation/query-absence assertion; SQL-free task-router check; and `git diff --check`: **PASS**.
+
+Risk:
+- `TaskService` still contains task listing, calendar, image, and attachment SQL; `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/repositories/task_repository.py` and `backend/services/task_service.py`. The changed-path sensitive-file scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move the task image count/upload persistence into `TaskRepository`, then run focused image authorization coverage and the full regression suite.

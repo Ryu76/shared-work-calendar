@@ -91,3 +91,18 @@ class TaskRepository:
                     (task_id, assignee_id, timestamp),
                 )
         return connection.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+
+    @staticmethod
+    def soft_delete_task(
+        connection: Any,
+        task_id: int,
+        deleted_at: str,
+        deleted_by: int,
+        updated_at: str,
+    ) -> None:
+        """Mark one task deleted and clear its local notification outbox rows."""
+        connection.execute(
+            "UPDATE tasks SET deleted_at=?,deleted_by=?,updated_at=? WHERE id=?",
+            (deleted_at, deleted_by, updated_at, task_id),
+        )
+        connection.execute("DELETE FROM notification_outbox WHERE task_id=?", (task_id,))

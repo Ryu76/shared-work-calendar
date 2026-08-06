@@ -289,11 +289,9 @@ class TaskService:
         with self._db() as connection:
             task = self._accessible_task(connection, task_id, user)
             before = self._task_view(connection, task)
-            connection.execute(
-                "UPDATE tasks SET deleted_at=?,deleted_by=?,updated_at=? WHERE id=?",
-                (self._now(), user["id"], self._now(), task_id),
+            self._repository.soft_delete_task(
+                connection, task_id, self._now(), user["id"], self._now()
             )
-            connection.execute("DELETE FROM notification_outbox WHERE task_id=?", (task_id,))
             self._audit(
                 connection,
                 user["id"],
