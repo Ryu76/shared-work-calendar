@@ -299,9 +299,7 @@ class TaskService:
             try:
                 with self._db() as connection:
                     self._accessible_task(connection, task_id, user)
-                    existing_count = connection.execute(
-                        "SELECT COUNT(*) FROM task_images WHERE task_id=?", (task_id,)
-                    ).fetchone()[0]
+                    existing_count = self._repository.image_count(connection, task_id)
                     if existing_count + len(prepared) > self._max_image_count:
                         raise HTTPException(status_code=422, detail="업무당 이미지는 최대 5개까지 첨부할 수 있습니다.")
                     self._upload_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -317,11 +315,17 @@ class TaskService:
                             pass
                         created_paths.append(destination)
                         filename = Path(upload.filename or "image").name[-255:] or "image"
-                        image_id = connection.execute(
-                            "INSERT INTO task_images(task_id,storage_key,original_filename,mime_type,size_bytes,sort_order,uploaded_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
-                            (task_id, storage_key, filename, mime_type, len(content), existing_count + offset, user["id"], self._now()),
-                        ).lastrowid
-                        row = connection.execute("SELECT * FROM task_images WHERE id=?", (image_id,)).fetchone()
+                        row = self._repository.create_task_image(
+                            connection,
+                            task_id,
+                            storage_key,
+                            filename,
+                            mime_type,
+                            len(content),
+                            existing_count + offset,
+                            user["id"],
+                            self._now(),
+                        )
                         uploaded.append(self._image_view(row))
                     self._audit(
                         connection, user["id"], "TASK_IMAGE_UPLOADED", "TASK", task_id,

@@ -178,3 +178,38 @@ class TaskRepository:
             (deleted_at, deleted_by, updated_at, task_id),
         )
         connection.execute("DELETE FROM notification_outbox WHERE task_id=?", (task_id,))
+
+    @staticmethod
+    def image_count(connection: Any, task_id: int) -> int:
+        """Return the current number of images attached to one task."""
+        return connection.execute(
+            "SELECT COUNT(*) FROM task_images WHERE task_id=?", (task_id,)
+        ).fetchone()[0]
+
+    @staticmethod
+    def create_task_image(
+        connection: Any,
+        task_id: int,
+        storage_key: str,
+        original_filename: str,
+        mime_type: str,
+        size_bytes: int,
+        sort_order: int,
+        uploaded_by: int,
+        created_at: str,
+    ) -> Any:
+        """Persist and return one task-image metadata row."""
+        image_id = connection.execute(
+            "INSERT INTO task_images(task_id,storage_key,original_filename,mime_type,size_bytes,sort_order,uploaded_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
+            (
+                task_id,
+                storage_key,
+                original_filename,
+                mime_type,
+                size_bytes,
+                sort_order,
+                uploaded_by,
+                created_at,
+            ),
+        ).lastrowid
+        return connection.execute("SELECT * FROM task_images WHERE id=?", (image_id,)).fetchone()
