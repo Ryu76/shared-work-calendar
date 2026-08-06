@@ -1523,4 +1523,28 @@ Risk:
 - Before this progress update, `git status --short --untracked-files=all` listed only `backend/app/main.py` and `backend/repositories/task_repository.py`. The changed-path scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
 
 Next Phase:
-- Continue the repository phase with the smallest remaining behavior-preserving SQL slice in `TaskService`, then run focused coverage and the full regression suite.
+- Continue the repository phase with the smallest remaining behavior-preserving DashboardService slice: move the authorized statistics aggregates into `DashboardRepository`, then run focused statistics authorization coverage and the full regression suite.
+
+## Codex Execution PRD — dashboard statistics repository persistence slice (2026-08-06 23:12:45 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: Dashboard completed-calendar/export, Notification, and Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added persistence-only `DashboardRepository.statistics_rows` and moved the authorized statistics status and per-assignee aggregate queries from `DashboardService.statistics` into it.
+- Preserved `GET /api/statistics` URL, request/response schema, status aggregation, per-user ordering, active-state projection, member visibility scope, member assignee-filter restriction, validation status/messages, database schema/data, SQLCipher transaction behavior, uploads, DPAPI/key material, credentials, `.env`, notification delivery, deployment, and external-service behavior.
+- `DashboardService.statistics` now delegates aggregate persistence to `DashboardRepository` and contains zero `.execute(` calls; `routers/dashboard.py` remains SQL-free. The completed-calendar and XLSX-export SQL remains deliberately unchanged for later small slices.
+
+Modified Files:
+- `backend/repositories/dashboard_repository.py` — adds authorized statistics aggregation persistence.
+- `backend/services/dashboard_service.py` — retains statistics validation/projection and delegates aggregate reads to `DashboardRepository`.
+- `backend/app/main.py` — wires the dashboard repository into the existing dashboard service without changing routes.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused statistics regression: `python -m compileall -q app/main.py services/dashboard_service.py repositories/dashboard_repository.py && python -m unittest test_main.CalendarApiTests.test_statistics_scope_status_user_aggregation_and_validation -v` (from `backend`): **PASS** — 1 test in **2.011s**. It covers authorized status/user aggregation, date filtering, member visibility, member filter bypass rejection, and date-range validation.
+- Full verification from the repository root: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/app/main.py backend/services/dashboard_service.py backend/repositories/dashboard_repository.py backend/routers/dashboard.py backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && python -c "...AST-scoped statistics query-absence and repository-operation assertions..." && git diff --check`: **PASS** — all **29 tests** passed in **93.560s**; JavaScript syntax, Python compilation, dashboard statistics repository boundary, and whitespace checks passed. This includes the Phase 1 acceptance workflow and rendered statistics-dashboard regression coverage.
+
+Risk:
+- `DashboardService` still contains completed-calendar and XLSX-export SQL; `NotificationService` and `MasterService` also still contain SQL. The Codex PRD condition that SQL reside only in repositories remains unfulfilled; `app/main.py` also remains above the recommended 50 lines.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/app/main.py`, `backend/services/dashboard_service.py`, and `backend/repositories/dashboard_repository.py`. The changed-path scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving DashboardService slice: move authorized completed-date report-calendar persistence into `DashboardRepository`, then run focused completed-calendar authorization coverage and the full regression suite.

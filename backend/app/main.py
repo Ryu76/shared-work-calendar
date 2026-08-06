@@ -39,6 +39,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from routers.tasks import create_router as create_task_router
     from routers.users import create_router as create_users_router
     from repositories.auth_repository import AuthRepository
+    from repositories.dashboard_repository import DashboardRepository
     from repositories.task_repository import TaskRepository
     from repositories.user_repository import UserRepository
     from services.auth_service import AuthService
@@ -59,6 +60,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.routers.tasks import create_router as create_task_router
     from backend.routers.users import create_router as create_users_router
     from backend.repositories.auth_repository import AuthRepository
+    from backend.repositories.dashboard_repository import DashboardRepository
     from backend.repositories.task_repository import TaskRepository
     from backend.repositories.user_repository import UserRepository
     from backend.services.auth_service import AuthService
@@ -110,6 +112,7 @@ SESSIONS: dict[str, tuple[int, datetime]] = {}
 PASSWORD_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2, hash_len=32, salt_len=16)
 SEOUL_TIMEZONE = ZoneInfo("Asia/Seoul")
 TASK_REPOSITORY = TaskRepository()
+DASHBOARD_REPOSITORY = DashboardRepository()
 USER_REPOSITORY = UserRepository()
 
 
@@ -669,7 +672,9 @@ app.include_router(
 )
 app.include_router(
     create_dashboard_router(
-        DashboardService(db, task_query_sql, task_view, task_export_workbook, audit),
+        DashboardService(
+            db, task_query_sql, task_view, task_export_workbook, audit, DASHBOARD_REPOSITORY
+        ),
         current_user,
         password_changed_user,
     )
