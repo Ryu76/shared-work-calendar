@@ -95,6 +95,10 @@ def create_router(
     def get_task_history(task_id: int, user: Any = Depends(current_user)):
         return service.get_task_history(task_id, password_changed_user(user))
 
+    @router.get("/api/tasks/{task_id}/images/{image_id}")
+    def serve_task_image(task_id: int, image_id: int, user: Any = Depends(current_user)):
+        return service.get_task_image(task_id, image_id, password_changed_user(user))
+
     @router.get("/api/calendar")
     def calendar(month: str, user: Any = Depends(current_user)):
         return service.get_received_date_calendar(month, password_changed_user(user))

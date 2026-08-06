@@ -978,20 +978,6 @@ async def upload_task_images(
             await upload.close()
 
 
-@app.get("/api/tasks/{task_id}/images/{image_id}")
-def serve_task_image(task_id: int, image_id: int, user: sqlite3.Row = Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c:
-        accessible_task(c, task_id, user)
-        image = c.execute("SELECT * FROM task_images WHERE id=? AND task_id=?", (image_id, task_id)).fetchone()
-        if not image:
-            raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
-        path = private_image_path(image["storage_key"])
-        if not path.is_file():
-            raise HTTPException(status_code=404, detail="이미지 파일을 찾을 수 없습니다.")
-        return FileResponse(path, media_type=image["mime_type"], headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
-
-
 @app.post("/api/tasks/{task_id}/images/{image_id}/edit")
 def edit_task_image(
     task_id: int, image_id: int, payload: ImageEditIn, request: Request, user: sqlite3.Row = Depends(current_user)
@@ -1335,6 +1321,7 @@ app.include_router(
             audit,
             task_changes,
             task_history,
+            private_image_path,
         ),
         current_user,
         password_changed_user,

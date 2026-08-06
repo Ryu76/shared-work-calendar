@@ -11,6 +11,7 @@ from datetime import date
 from typing import Any, Callable, ContextManager
 
 from fastapi import HTTPException
+from fastapi.responses import FileResponse
 
 
 class TaskService:
@@ -28,6 +29,7 @@ class TaskService:
         audit: Callable[..., None],
         task_changes: Callable[[dict, dict], list[str]],
         task_history: Callable[[Any, int], list[dict]],
+        private_image_path: Callable[[str], Any],
     ) -> None:
         self._db = db
         self._task_query_sql = task_query_sql
@@ -39,6 +41,7 @@ class TaskService:
         self._audit = audit
         self._task_changes = task_changes
         self._task_history = task_history
+        self._private_image_path = private_image_path
 
     def create_task(self, payload: Any, user: Any, ip_address: str | None) -> dict:
         """Create a task with the unchanged validation, audit, and response view."""
@@ -294,6 +297,24 @@ class TaskService:
         with self._db() as connection:
             self._accessible_task(connection, task_id, user)
             return self._task_history(connection, task_id)
+
+    def get_task_image(self, task_id: int, image_id: int, user: Any) -> FileResponse:
+        """Serve one private image after the established task-level authorization."""
+        with self._db() as connection:
+            self._accessible_task(connection, task_id, user)
+            image = connection.execute(
+                "SELECT * FROM task_images WHERE id=? AND task_id=?", (image_id, task_id)
+            ).fetchone()
+            if not image:
+                raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
+            path = self._private_image_path(image["storage_key"])
+            if not path.is_file():
+                raise HTTPException(status_code=404, detail="이미지 파일을 찾을 수 없습니다.")
+            return FileResponse(
+                path,
+                media_type=image["mime_type"],
+                headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+            )
 
     def get_received_date_calendar(self, month: str, user: Any) -> list[dict]:
         """Return all authorized live tasks received during a validated month."""
