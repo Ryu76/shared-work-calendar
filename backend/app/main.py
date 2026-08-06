@@ -33,7 +33,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from database import DB_PATH, connect, sqlite3
     from schemas.requests import (
         ContactPatch,
-        OrganizationPatch, TaskIn, TaskUpdateIn,
+        TaskIn, TaskUpdateIn,
     )
     from routers.auth import create_router as create_auth_router
     from routers.dashboard import create_router as create_dashboard_router
@@ -53,7 +53,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.database import DB_PATH, connect, sqlite3
     from backend.schemas.requests import (
         ContactPatch,
-        OrganizationPatch, TaskIn, TaskUpdateIn,
+        TaskIn, TaskUpdateIn,
     )
     from backend.routers.auth import create_router as create_auth_router
     from backend.routers.dashboard import create_router as create_dashboard_router
@@ -640,26 +640,6 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
-
-
-@app.patch("/api/admin/organizations/{organization_id}")
-def patch_organization(organization_id: int, payload: OrganizationPatch, request: Request, user: sqlite3.Row=Depends(admin_required)):
-    with db() as c:
-        old = c.execute("SELECT * FROM organizations WHERE id=?", (organization_id,)).fetchone()
-        if not old:
-            raise HTTPException(status_code=404, detail="기관을 찾을 수 없습니다.")
-        new_name = payload.name if payload.name is not None else old["name"]
-        new_active = int(old["is_active"] if payload.is_active is None else payload.is_active)
-        conflict = c.execute("SELECT id FROM organizations WHERE name=? AND id!=?", (new_name, organization_id)).fetchone()
-        if conflict:
-            raise HTTPException(status_code=409, detail="같은 기관명이 이미 존재합니다.")
-        before = organization_view(old)
-        c.execute("UPDATE organizations SET name=?,is_active=?,updated_at=? WHERE id=?", (new_name, new_active, now(), organization_id))
-        updated = organization_view(c.execute("SELECT * FROM organizations WHERE id=?", (organization_id,)).fetchone())
-        if before != updated:
-            audit(c, user["id"], "ORGANIZATION_UPDATED", "ORGANIZATION", organization_id, before, updated,
-                  request.client.host if request.client else None)
-        return updated
 
 
 @app.patch("/api/admin/request-contacts/{contact_id}")

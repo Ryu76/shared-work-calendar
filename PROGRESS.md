@@ -921,3 +921,29 @@ Risk:
 
 Next Phase:
 - Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice (`PATCH /api/admin/organizations/{organization_id}`) behind the existing SQL-free router/service boundary, then run focused coverage and the full regression suite.
+
+## Codex Execution PRD — admin organization-update router/service slice (2026-08-06 16:20:32 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: remaining admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `PATCH /api/admin/organizations/{organization_id}` endpoint into the existing SQL-free `backend/routers/master.py` boundary and delegated the existing administrator organization update operation to `MasterService.patch_organization`.
+- Preserved the administrator dependency (including forced-password-change enforcement); `OrganizationPatch` validation; not-found and duplicate-name status/detail behavior; partial-name/active updates; organization response projection including timestamps; audit-before/after content, actor/IP values, and audit-on-change-only behavior; transaction behavior; and the existing API URL/request-response schema. Database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/static verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one `PATCH /api/admin/organizations/{organization_id}` route. `backend/routers/master.py` contains no SQL operation or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved administrator organization-update endpoint body and its no-longer-needed request-model import.
+- `backend/routers/master.py` — adds the unchanged administrator organization-update HTTP boundary.
+- `backend/services/master_service.py` — adds the extracted organization update operation.
+- `backend/test_main.py` — strengthens master lifecycle coverage for the unchanged organization update response.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused master regression: `python -m unittest test_main.CalendarApiTests.test_request_master_management_authorization_lifecycle_and_audit -v` (from `backend`): **PASS** — 1 test in **2.323s**.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/master.py services/master_service.py main.py`; then package import/title/44-route/single-PATCH-route assertion; `! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/master.py`; and `git diff --check`: **PASS**.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...package route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/master.py && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **93.651s**; JavaScript syntax, Python compilation, package import, unchanged 44-route contract, SQL-free router check, and whitespace checks passed.
+
+Risk:
+- `TaskService`, `DashboardService`, `UserService`, `AuthService`, `NotificationService`, and `MasterService` still contain repository SQL as intentional intermediate service boundaries. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the four verified non-sensitive source/test files. A tracked sensitive-path scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice (`PATCH /api/admin/request-contacts/{contact_id}`) behind the existing SQL-free router/service boundary, then run focused coverage and the full regression suite.

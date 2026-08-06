@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, ContextManager
 
+from fastapi import HTTPException
+
 
 class MasterService:
     """Provide unchanged authenticated master-data operations."""
@@ -145,6 +147,49 @@ class MasterService:
                 (f"%{query.strip()}%",),
             )
             return [self._organization_view(row) for row in rows]
+
+    def patch_organization(
+        self, organization_id: int, payload: Any, user: Any, ip_address: str | None
+    ) -> dict:
+        """Update an organization with the unchanged conflict and audit behavior."""
+        with self._db() as connection:
+            old = connection.execute(
+                "SELECT * FROM organizations WHERE id=?", (organization_id,)
+            ).fetchone()
+            if not old:
+                raise HTTPException(status_code=404, detail="기관을 찾을 수 없습니다.")
+            new_name = payload.name if payload.name is not None else old["name"]
+            new_active = int(
+                old["is_active"] if payload.is_active is None else payload.is_active
+            )
+            conflict = connection.execute(
+                "SELECT id FROM organizations WHERE name=? AND id!=?",
+                (new_name, organization_id),
+            ).fetchone()
+            if conflict:
+                raise HTTPException(status_code=409, detail="같은 기관명이 이미 존재합니다.")
+            before = self._organization_view(old)
+            connection.execute(
+                "UPDATE organizations SET name=?,is_active=?,updated_at=? WHERE id=?",
+                (new_name, new_active, self._now(), organization_id),
+            )
+            updated = self._organization_view(
+                connection.execute(
+                    "SELECT * FROM organizations WHERE id=?", (organization_id,)
+                ).fetchone()
+            )
+            if before != updated:
+                self._audit(
+                    connection,
+                    user["id"],
+                    "ORGANIZATION_UPDATED",
+                    "ORGANIZATION",
+                    organization_id,
+                    before,
+                    updated,
+                    ip_address,
+                )
+            return updated
 
     def admin_contacts(self, query: str) -> list[dict]:
         """Return the existing administrator request-contact management list."""
