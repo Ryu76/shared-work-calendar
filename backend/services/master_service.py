@@ -201,3 +201,62 @@ class MasterService:
                 (f"%{query.strip()}%",) * 3,
             )
             return [self._contact_view(connection, row) for row in rows]
+
+    def patch_contact(
+        self, contact_id: int, payload: Any, user: Any, ip_address: str | None
+    ) -> dict:
+        """Update a request contact with the unchanged conflict and audit behavior."""
+        with self._db() as connection:
+            old = connection.execute(
+                "SELECT * FROM request_contacts WHERE id=?", (contact_id,)
+            ).fetchone()
+            if not old:
+                raise HTTPException(status_code=404, detail="요청 담당자를 찾을 수 없습니다.")
+            name = payload.name if payload.name is not None else old["name"]
+            phone = payload.phone if payload.phone is not None else old["phone"]
+            organization_id = (
+                payload.organization_id
+                if payload.organization_id is not None
+                else old["organization_id"]
+            )
+            is_active = int(
+                old["is_active"] if payload.is_active is None else payload.is_active
+            )
+            if not connection.execute(
+                "SELECT 1 FROM organizations WHERE id=?", (organization_id,)
+            ).fetchone():
+                raise HTTPException(status_code=422, detail="존재하지 않는 기관입니다.")
+            duplicate = connection.execute(
+                "SELECT id FROM request_contacts WHERE name=? AND phone=? "
+                "AND organization_id=? AND id!=?",
+                (name, phone, organization_id, contact_id),
+            ).fetchone()
+            if duplicate:
+                raise HTTPException(
+                    status_code=409,
+                    detail="같은 이름, 연락처, 기관의 요청 담당자가 이미 존재합니다.",
+                )
+            before = self._contact_view(connection, old)
+            connection.execute(
+                "UPDATE request_contacts SET name=?,phone=?,organization_id=?,is_active=?,"
+                "updated_at=? WHERE id=?",
+                (name, phone, organization_id, is_active, self._now(), contact_id),
+            )
+            updated = self._contact_view(
+                connection,
+                connection.execute(
+                    "SELECT * FROM request_contacts WHERE id=?", (contact_id,)
+                ).fetchone(),
+            )
+            if before != updated:
+                self._audit(
+                    connection,
+                    user["id"],
+                    "REQUEST_CONTACT_UPDATED",
+                    "REQUEST_CONTACT",
+                    contact_id,
+                    before,
+                    updated,
+                    ip_address,
+                )
+            return updated

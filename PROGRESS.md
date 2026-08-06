@@ -946,4 +946,30 @@ Risk:
 - Before this progress update, `git status --short --untracked-files=all` listed only the four verified non-sensitive source/test files. A tracked sensitive-path scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
 
 Next Phase:
-- Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice (`PATCH /api/admin/request-contacts/{contact_id}`) behind the existing SQL-free router/service boundary, then run focused coverage and the full regression suite.
+- Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice (`GET /api/admin/audit-logs`) behind an SQL-free router/service boundary, then run focused coverage and the full regression suite.
+
+## Codex Execution PRD — admin request-contact-update router/service slice (2026-08-06 16:37:53 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: remaining admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `PATCH /api/admin/request-contacts/{contact_id}` endpoint into the existing SQL-free `backend/routers/master.py` boundary and delegated the existing administrator request-contact update operation to `MasterService.patch_contact`.
+- Preserved the administrator and forced-password-change dependency; `ContactPatch` validation; not-found, missing-organization, and duplicate-combination status/detail behavior; partial name/phone/organization/active updates; contact response projection; audit before/after content, actor/IP values, audit-on-change-only behavior; transaction behavior; and existing API URL/request-response schemas. Database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/static verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one `PATCH /api/admin/request-contacts/{contact_id}` route. `backend/routers/master.py` contains no SQL operation or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved administrator request-contact update endpoint and its no-longer-needed request-model imports.
+- `backend/routers/master.py` — adds the unchanged administrator request-contact update HTTP boundary.
+- `backend/services/master_service.py` — adds the extracted request-contact update operation.
+- `backend/test_main.py` — strengthens master lifecycle coverage for unchanged updated-contact response fields.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused master regression: `python -m unittest test_main.CalendarApiTests.test_request_master_management_authorization_lifecycle_and_audit -v` (from `backend`): **PASS** — 1 test in **2.423s**.
+- Router contract/static-boundary verification: compilation; package import/title/44-route/single-PATCH-route assertion; SQL-free router check; and `git diff --check`: **PASS**.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && python -c "...package route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' backend/routers/master.py && git diff --check`: **PASS** — all **27 tests** passed in **93.160s**; JavaScript syntax, Python compilation, package import, unchanged 44-route contract, SQL-free router check, and whitespace checks passed.
+
+Risk:
+- `TaskService`, `DashboardService`, `UserService`, `AuthService`, `NotificationService`, and `MasterService` still contain repository SQL as intentional intermediate service boundaries. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the four verified non-sensitive source/test files. A tracked sensitive-path scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice (`GET /api/admin/audit-logs`) behind an SQL-free router/service boundary, then run focused coverage and the full regression suite.

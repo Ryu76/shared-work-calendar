@@ -31,10 +31,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from core.config import load_settings
     from core.logging import configure_logging
     from database import DB_PATH, connect, sqlite3
-    from schemas.requests import (
-        ContactPatch,
-        TaskIn, TaskUpdateIn,
-    )
+    from schemas.requests import TaskIn, TaskUpdateIn
     from routers.auth import create_router as create_auth_router
     from routers.dashboard import create_router as create_dashboard_router
     from routers.master import create_router as create_master_router
@@ -51,10 +48,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.core.config import load_settings
     from backend.core.logging import configure_logging
     from backend.database import DB_PATH, connect, sqlite3
-    from backend.schemas.requests import (
-        ContactPatch,
-        TaskIn, TaskUpdateIn,
-    )
+    from backend.schemas.requests import TaskIn, TaskUpdateIn
     from backend.routers.auth import create_router as create_auth_router
     from backend.routers.dashboard import create_router as create_dashboard_router
     from backend.routers.master import create_router as create_master_router
@@ -640,30 +634,6 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
-
-
-@app.patch("/api/admin/request-contacts/{contact_id}")
-def patch_contact(contact_id: int, payload: ContactPatch, request: Request, user: sqlite3.Row=Depends(admin_required)):
-    with db() as c:
-        old = c.execute("SELECT * FROM request_contacts WHERE id=?", (contact_id,)).fetchone()
-        if not old:
-            raise HTTPException(status_code=404, detail="요청 담당자를 찾을 수 없습니다.")
-        name = payload.name if payload.name is not None else old["name"]
-        phone = payload.phone if payload.phone is not None else old["phone"]
-        org_id = payload.organization_id if payload.organization_id is not None else old["organization_id"]
-        is_active = int(old["is_active"] if payload.is_active is None else payload.is_active)
-        if not c.execute("SELECT 1 FROM organizations WHERE id=?", (org_id,)).fetchone():
-            raise HTTPException(status_code=422, detail="존재하지 않는 기관입니다.")
-        duplicate = c.execute("SELECT id FROM request_contacts WHERE name=? AND phone=? AND organization_id=? AND id!=?", (name, phone, org_id, contact_id)).fetchone()
-        if duplicate:
-            raise HTTPException(status_code=409, detail="같은 이름, 연락처, 기관의 요청 담당자가 이미 존재합니다.")
-        before = contact_view(c, old)
-        c.execute("UPDATE request_contacts SET name=?,phone=?,organization_id=?,is_active=?,updated_at=? WHERE id=?", (name, phone, org_id, is_active, now(), contact_id))
-        updated = contact_view(c, c.execute("SELECT * FROM request_contacts WHERE id=?", (contact_id,)).fetchone())
-        if before != updated:
-            audit(c, user["id"], "REQUEST_CONTACT_UPDATED", "REQUEST_CONTACT", contact_id, before, updated,
-                  request.client.host if request.client else None)
-        return updated
 
 
 @app.get("/api/admin/audit-logs")

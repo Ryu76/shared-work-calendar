@@ -6,10 +6,10 @@ from typing import Any, Callable
 from fastapi import APIRouter, Depends, Request, status
 
 try:
-    from schemas.requests import ContactIn, OrganizationIn, OrganizationPatch
+    from schemas.requests import ContactIn, ContactPatch, OrganizationIn, OrganizationPatch
     from services.master_service import MasterService
 except ModuleNotFoundError:
-    from backend.schemas.requests import ContactIn, OrganizationIn, OrganizationPatch
+    from backend.schemas.requests import ContactIn, ContactPatch, OrganizationIn, OrganizationPatch
     from backend.services.master_service import MasterService
 
 
@@ -77,5 +77,19 @@ def create_router(
     @router.get("/api/admin/request-contacts")
     def admin_contacts(q: str = "", _: Any = Depends(admin_required)):
         return service.admin_contacts(q)
+
+    @router.patch("/api/admin/request-contacts/{contact_id}")
+    def patch_contact(
+        contact_id: int,
+        payload: ContactPatch,
+        request: Request,
+        user: Any = Depends(admin_required),
+    ):
+        return service.patch_contact(
+            contact_id,
+            payload,
+            user,
+            request.client.host if request.client else None,
+        )
 
     return router

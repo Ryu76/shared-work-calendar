@@ -822,6 +822,8 @@ class CalendarApiTests(unittest.TestCase):
         self.assertTrue(renamed.json()["is_active"])
         updated = client.patch(f"/api/admin/request-contacts/{contact['id']}", headers=admin, json={"name": "수정 담당자", "phone": "010-8888-9999", "organization_id": org["id"], "is_active": False})
         self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(updated.json()["name"], "수정 담당자")
+        self.assertEqual(updated.json()["organization_id"], org["id"])
         self.assertFalse(updated.json()["is_active"])
         self.assertEqual(client.get("/api/request-contacts?q=수정", headers=member).json(), [])
         audit = client.get("/api/admin/audit-logs", headers=admin).json()
