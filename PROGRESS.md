@@ -973,3 +973,28 @@ Risk:
 
 Next Phase:
 - Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice (`GET /api/admin/audit-logs`) behind an SQL-free router/service boundary, then run focused coverage and the full regression suite.
+
+## Codex Execution PRD — admin audit-log router/service slice (2026-08-06 16:54:24 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering, and `main.py` minimization are still pending.
+- Extracted the unchanged `GET /api/admin/audit-logs` endpoint into the existing SQL-free `backend/routers/master.py` boundary and delegated its audit lookup, inclusive UTC date filtering, and response projection to `MasterService.audit_logs`.
+- Preserved the administrator dependency (including forced-password-change enforcement); `action`, `actor_user_id`, `created_from`, and `created_to` query validation; invalid date-range 422 detail; action/actor/date filtering; descending-ID ordering; 100-row limit; sensitive audit-value redaction; and the existing API URL/request-response schema. Database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/static verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one `GET /api/admin/audit-logs` route. `backend/routers/master.py` contains no SQL operation or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved audit-log endpoint body, removes now-unused imports, and supplies the existing audit response projection to `MasterService`.
+- `backend/routers/master.py` — adds the unchanged administrator audit-log HTTP boundary.
+- `backend/services/master_service.py` — adds the extracted administrator audit lookup/filter operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused audit regression: `python -m unittest test_main.CalendarApiTests.test_audit_log_filters_authorization_validation_and_sensitive_redaction -v` (from `backend`): **PASS** — 1 test in **2.011s**. It covers administrator-only direct access, validation, all query filters, inclusive date bounds, and sensitive-field redaction.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/master.py services/master_service.py main.py`; package import/title/44-route/single-audit-route assertion; `! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/master.py`; and `git diff --check`: **PASS**.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...package route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/master.py && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **93.995s**; JavaScript syntax, Python compilation, package import, unchanged 44-route contract, SQL-free router check, and whitespace checks passed.
+
+Risk:
+- `TaskService`, `DashboardService`, `UserService`, `AuthService`, `NotificationService`, and `MasterService` still contain repository SQL as intentional intermediate service boundaries. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the three verified non-sensitive source files. A tracked sensitive-path scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Begin the repository phase with one small, behavior-preserving database-operation extraction behind an existing service boundary, then run focused coverage and the full regression suite.

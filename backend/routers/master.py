@@ -1,9 +1,10 @@
 """HTTP boundary for unchanged request-information master endpoints."""
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Callable
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 
 try:
     from schemas.requests import ContactIn, ContactPatch, OrganizationIn, OrganizationPatch
@@ -91,5 +92,15 @@ def create_router(
             user,
             request.client.host if request.client else None,
         )
+
+    @router.get("/api/admin/audit-logs")
+    def audit_logs(
+        action: str | None = Query(None, min_length=1, max_length=50, pattern=r"^[A-Z][A-Z0-9_]*$"),
+        actor_user_id: int | None = Query(None, gt=0),
+        created_from: date | None = None,
+        created_to: date | None = None,
+        _: Any = Depends(admin_required),
+    ):
+        return service.audit_logs(action, actor_user_id, created_from, created_to)
 
     return router

@@ -9,14 +9,14 @@ import zipfile
 import warnings
 from io import BytesIO
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from zoneinfo import ZoneInfo
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-from fastapi import Depends, File, FastAPI, HTTPException, Query, Request, UploadFile, status
+from fastapi import Depends, File, FastAPI, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from openpyxl import Workbook
@@ -407,7 +407,7 @@ def contact_view(c: sqlite3.Connection, row: sqlite3.Row) -> dict:
     return out
 
 
-master_service = MasterService(db, organization_view, contact_view, now, audit)
+master_service = MasterService(db, organization_view, contact_view, audit_log_view, now, audit)
 
 def image_view(row: sqlite3.Row) -> dict:
     """Metadata deliberately excludes the private storage key."""
@@ -634,36 +634,6 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
-
-
-@app.get("/api/admin/audit-logs")
-def audit_logs(
-    action: str | None = Query(None, min_length=1, max_length=50, pattern=r"^[A-Z][A-Z0-9_]*$"),
-    actor_user_id: int | None = Query(None, gt=0),
-    created_from: date | None = None,
-    created_to: date | None = None,
-    _: sqlite3.Row = Depends(admin_required),
-):
-    """Administrator-only audit trail filtered by event, actor, and inclusive UTC date range."""
-    if created_from and created_to and created_from > created_to:
-        raise HTTPException(status_code=422, detail="시작일은 종료일보다 늦을 수 없습니다.")
-    sql = "SELECT a.*,u.name actor_name FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id WHERE 1=1"
-    params: list[str | int] = []
-    if action:
-        sql += " AND a.action=?"
-        params.append(action)
-    if actor_user_id is not None:
-        sql += " AND a.actor_user_id=?"
-        params.append(actor_user_id)
-    if created_from:
-        sql += " AND a.created_at>=?"
-        params.append(str(created_from))
-    if created_to:
-        sql += " AND a.created_at<?"
-        params.append(str(created_to + timedelta(days=1)))
-    sql += " ORDER BY a.id DESC LIMIT 100"
-    with db() as c:
-        return [audit_log_view(row) for row in c.execute(sql, params)]
 
 
 # Register after the existing static task-export route so its literal path retains

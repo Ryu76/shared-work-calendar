@@ -1,6 +1,7 @@
 """Request-information master operations extracted from the HTTP router."""
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any, Callable, ContextManager
 
 from fastapi import HTTPException
@@ -14,12 +15,14 @@ class MasterService:
         db: Callable[[], ContextManager[Any]],
         organization_view: Callable[[Any], dict],
         contact_view: Callable[[Any, Any], dict],
+        audit_log_view: Callable[[Any], dict],
         now: Callable[[], str],
         audit: Callable[..., None],
     ) -> None:
         self._db = db
         self._organization_view = organization_view
         self._contact_view = contact_view
+        self._audit_log_view = audit_log_view
         self._now = now
         self._audit = audit
 
@@ -260,3 +263,31 @@ class MasterService:
                     ip_address,
                 )
             return updated
+
+    def audit_logs(
+        self,
+        action: str | None,
+        actor_user_id: int | None,
+        created_from: date | None,
+        created_to: date | None,
+    ) -> list[dict]:
+        """Return the existing administrator audit trail with inclusive date filtering."""
+        if created_from and created_to and created_from > created_to:
+            raise HTTPException(status_code=422, detail="시작일은 종료일보다 늦을 수 없습니다.")
+        sql = "SELECT a.*,u.name actor_name FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id WHERE 1=1"
+        params: list[str | int] = []
+        if action:
+            sql += " AND a.action=?"
+            params.append(action)
+        if actor_user_id is not None:
+            sql += " AND a.actor_user_id=?"
+            params.append(actor_user_id)
+        if created_from:
+            sql += " AND a.created_at>=?"
+            params.append(str(created_from))
+        if created_to:
+            sql += " AND a.created_at<?"
+            params.append(str(created_to + timedelta(days=1)))
+        sql += " ORDER BY a.id DESC LIMIT 100"
+        with self._db() as connection:
+            return [self._audit_log_view(row) for row in connection.execute(sql, params)]
