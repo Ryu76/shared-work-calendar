@@ -145,3 +145,14 @@ class MasterService:
                 (f"%{query.strip()}%",),
             )
             return [self._organization_view(row) for row in rows]
+
+    def admin_contacts(self, query: str) -> list[dict]:
+        """Return the existing administrator request-contact management list."""
+        with self._db() as connection:
+            rows = connection.execute(
+                "SELECT rc.* FROM request_contacts rc JOIN organizations o ON o.id=rc.organization_id "
+                "WHERE rc.name LIKE ? OR rc.phone LIKE ? OR o.name LIKE ? "
+                "ORDER BY rc.is_active DESC,rc.name,o.name LIMIT 100",
+                (f"%{query.strip()}%",) * 3,
+            )
+            return [self._contact_view(connection, row) for row in rows]

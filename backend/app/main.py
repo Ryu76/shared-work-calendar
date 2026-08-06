@@ -662,17 +662,6 @@ def patch_organization(organization_id: int, payload: OrganizationPatch, request
         return updated
 
 
-@app.get("/api/admin/request-contacts")
-def admin_contacts(q: str="", _: sqlite3.Row=Depends(admin_required)):
-    with db() as c:
-        rows = c.execute(
-            "SELECT rc.* FROM request_contacts rc JOIN organizations o ON o.id=rc.organization_id "
-            "WHERE rc.name LIKE ? OR rc.phone LIKE ? OR o.name LIKE ? "
-            "ORDER BY rc.is_active DESC,rc.name,o.name LIMIT 100", (f"%{q.strip()}%",) * 3,
-        )
-        return [contact_view(c, row) for row in rows]
-
-
 @app.patch("/api/admin/request-contacts/{contact_id}")
 def patch_contact(contact_id: int, payload: ContactPatch, request: Request, user: sqlite3.Row=Depends(admin_required)):
     with db() as c:

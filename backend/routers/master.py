@@ -60,4 +60,8 @@ def create_router(
     def admin_organizations(q: str = "", _: Any = Depends(admin_required)):
         return service.admin_organizations(q)
 
+    @router.get("/api/admin/request-contacts")
+    def admin_contacts(q: str = "", _: Any = Depends(admin_required)):
+        return service.admin_contacts(q)
+
     return router
