@@ -1317,3 +1317,26 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move the task image count/upload persistence into `TaskRepository`, then run focused image authorization coverage and the full regression suite.
+
+## Codex Execution PRD — task-list repository persistence slice (2026-08-06 20:40:11 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: Task/Dashboard/Notification/Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the small persistence-only `TaskRepository.list_tasks` operation and moved only the authorized task-list query composition, count, status summary, ordering, pagination, and row retrieval from `TaskService.list_tasks` into it.
+- Preserved `GET /api/tasks` URL/status/request-response schema; date-range and member assignee-filter validation; server-side administrator/member task visibility; status, received-date, due-date, assignee, and keyword filters; status-first ordering; pagination metadata; status summary; task-view projection; transaction behavior; SQLCipher behavior; database schema/data; DPAPI/key material; uploads; secrets; `.env`; notification delivery; deployment; and external-service behavior.
+- `TaskService.list_tasks` delegates the extracted database work to `TaskRepository`; the service list operation contains no `.execute(` call. `routers/tasks.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/task_repository.py` — adds task-list query, visibility scope, aggregate, ordering, pagination, and row-retrieval persistence.
+- `backend/services/task_service.py` — delegates only list persistence through `TaskRepository` while retaining input validation and task response projection.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused task-list regression: `python -m unittest test_main.CalendarApiTests.test_task_list_server_filters_pagination_and_calendar_month_validation -v && python -m compileall -q app/main.py services/task_service.py repositories/task_repository.py test_main.py && git diff --check` (from `backend`): **PASS** — 1 test in **2.386s**. It exercises server-side filtering, pagination, summary metadata, and calendar validation; compilation and whitespace validation passed.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...AST-scoped task-list repository delegation/query-absence and SQL-free router assertions..." && git diff --check` (from `backend`): **PASS** — all **29 tests** passed in **95.551s**; JavaScript syntax, Python compilation, task-list repository boundary, SQL-free task router, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains calendar, image, and attachment SQL; `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/repositories/task_repository.py` and `backend/services/task_service.py`. The changed-path sensitive-file scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move the received-date calendar row retrieval into `TaskRepository`, then run focused calendar visibility coverage and the full regression suite.

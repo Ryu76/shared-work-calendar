@@ -149,40 +149,19 @@ class TaskService:
         if user["role"] != "ADMIN" and assignee_id is not None and assignee_id != user["id"]:
             raise HTTPException(status_code=403, detail="일반 이용자의 처리자 필터는 본인으로 고정됩니다.")
         with self._db() as connection:
-            sql, params = self._task_query_sql(user)
-            if task_status:
-                sql += " AND t.status=?"
-                params.append(task_status)
-            if received_from:
-                sql += " AND t.received_date>=?"
-                params.append(str(received_from))
-            if received_to:
-                sql += " AND t.received_date<=?"
-                params.append(str(received_to))
-            if due_from:
-                sql += " AND t.due_date>=?"
-                params.append(str(due_from))
-            if due_to:
-                sql += " AND t.due_date<=?"
-                params.append(str(due_to))
             keyword = (query or "").strip()
-            if keyword:
-                sql += (
-                    " AND (t.description LIKE ? OR EXISTS(SELECT 1 FROM request_contacts rc "
-                    "JOIN organizations o ON o.id=rc.organization_id WHERE rc.id=t.requester_contact_id "
-                    "AND (rc.name LIKE ? OR o.name LIKE ?)))"
-                )
-                params += [f"%{keyword}%"] * 3
-            if assignee_id is not None:
-                sql += " AND EXISTS(SELECT 1 FROM task_assignees ta_filter WHERE ta_filter.task_id=t.id AND ta_filter.user_id=?)"
-                params.append(assignee_id)
-            total = connection.execute(f"SELECT COUNT(*) FROM ({sql})", params).fetchone()[0]
-            summary = {name: 0 for name in ("RECEIVED", "IN_PROGRESS", "COMPLETED")}
-            for row in connection.execute(f"SELECT t.status,COUNT(*) count FROM ({sql}) t GROUP BY t.status", params):
-                summary[row["status"]] = row["count"]
-            rows = connection.execute(
-                sql + " ORDER BY CASE t.status WHEN 'RECEIVED' THEN 1 WHEN 'IN_PROGRESS' THEN 2 ELSE 3 END,t.received_date DESC,t.id DESC LIMIT ? OFFSET ?",
-                [*params, page_size, (page - 1) * page_size],
+            total, summary, rows = self._repository.list_tasks(
+                connection,
+                user,
+                task_status,
+                keyword,
+                str(received_from) if received_from else None,
+                str(received_to) if received_to else None,
+                str(due_from) if due_from else None,
+                str(due_to) if due_to else None,
+                assignee_id,
+                page,
+                page_size,
             )
             return {
                 "items": [self._task_view(connection, row) for row in rows],
