@@ -6,10 +6,10 @@ from typing import Any, Callable, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, status
 try:
-    from schemas.requests import TaskIn, TaskUpdateIn
+    from schemas.requests import ImageEditIn, TaskIn, TaskUpdateIn
     from services.task_service import TaskService
 except ModuleNotFoundError:
-    from backend.schemas.requests import TaskIn, TaskUpdateIn
+    from backend.schemas.requests import ImageEditIn, TaskIn, TaskUpdateIn
     from backend.services.task_service import TaskService
 
 
@@ -98,6 +98,22 @@ def create_router(
     @router.get("/api/tasks/{task_id}/images/{image_id}")
     def serve_task_image(task_id: int, image_id: int, user: Any = Depends(current_user)):
         return service.get_task_image(task_id, image_id, password_changed_user(user))
+
+    @router.post("/api/tasks/{task_id}/images/{image_id}/edit")
+    def edit_task_image(
+        task_id: int,
+        image_id: int,
+        payload: ImageEditIn,
+        request: Request,
+        user: Any = Depends(current_user),
+    ):
+        return service.edit_task_image(
+            task_id,
+            image_id,
+            payload,
+            password_changed_user(user),
+            request.client.host if request.client else None,
+        )
 
     @router.delete("/api/tasks/{task_id}/images/{image_id}")
     def delete_task_image(

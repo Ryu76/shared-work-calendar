@@ -6,9 +6,12 @@ view shape, and error responses without importing the ASGI application.
 """
 from __future__ import annotations
 
+import os
 import re
+import uuid
 from datetime import date
-from typing import Any, Callable, ContextManager
+from pathlib import Path
+from typing import Any, Callable, ContextManager, Mapping
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
@@ -31,6 +34,8 @@ class TaskService:
         task_history: Callable[[Any, int], list[dict]],
         private_image_path: Callable[[str], Any],
         image_view: Callable[[Any], dict],
+        rotate_private_image: Callable[[bytes, str, str], bytes],
+        image_suffixes: Mapping[str, str],
     ) -> None:
         self._db = db
         self._task_query_sql = task_query_sql
@@ -44,6 +49,8 @@ class TaskService:
         self._task_history = task_history
         self._private_image_path = private_image_path
         self._image_view = image_view
+        self._rotate_private_image = rotate_private_image
+        self._image_suffixes = image_suffixes
 
     def create_task(self, payload: Any, user: Any, ip_address: str | None) -> dict:
         """Create a task with the unchanged validation, audit, and response view."""
@@ -317,6 +324,74 @@ class TaskService:
                 media_type=image["mime_type"],
                 headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
             )
+
+    def edit_task_image(
+        self, task_id: int, image_id: int, payload: Any, user: Any, ip_address: str | None
+    ) -> dict:
+        """Create the established private non-destructive image revision."""
+        created_path: Path | None = None
+        try:
+            with self._db() as connection:
+                self._accessible_task(connection, task_id, user)
+                image = connection.execute(
+                    "SELECT * FROM task_images WHERE id=? AND task_id=?", (image_id, task_id)
+                ).fetchone()
+                if not image:
+                    raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
+                source_path = self._private_image_path(image["storage_key"])
+                if not source_path.is_file():
+                    raise HTTPException(status_code=404, detail="이미지 파일을 찾을 수 없습니다.")
+                edited_content = self._rotate_private_image(
+                    source_path.read_bytes(), image["mime_type"], payload.direction
+                )
+                storage_key = f"edits/{task_id}/{uuid.uuid4().hex}{self._image_suffixes[image['mime_type']]}"
+                destination = self._private_image_path(storage_key)
+                destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                destination.write_bytes(edited_content)
+                try:
+                    os.chmod(destination, 0o600)
+                except OSError:
+                    pass
+                created_path = destination
+                connection.execute(
+                    "INSERT INTO task_image_edits(task_id,image_id,source_storage_key,result_storage_key,direction,edited_by,created_at) VALUES(?,?,?,?,?,?,?)",
+                    (
+                        task_id,
+                        image_id,
+                        image["storage_key"],
+                        storage_key,
+                        payload.direction,
+                        user["id"],
+                        self._now(),
+                    ),
+                )
+                connection.execute(
+                    "UPDATE task_images SET storage_key=?,size_bytes=? WHERE id=?",
+                    (storage_key, len(edited_content), image_id),
+                )
+                updated = connection.execute(
+                    "SELECT * FROM task_images WHERE id=?", (image_id,)
+                ).fetchone()
+                result = self._image_view(updated)
+                self._audit(
+                    connection,
+                    user["id"],
+                    "TASK_IMAGE_EDITED",
+                    "TASK",
+                    task_id,
+                    before={"image_id": image_id, "direction": payload.direction},
+                    after={"image": result, "direction": payload.direction},
+                    ip=ip_address,
+                )
+                return {
+                    "image": result,
+                    "direction": payload.direction,
+                    "non_destructive": True,
+                }
+        except Exception:
+            if created_path is not None:
+                created_path.unlink(missing_ok=True)
+            raise
 
     def delete_task_image(
         self, task_id: int, image_id: int, user: Any, ip_address: str | None

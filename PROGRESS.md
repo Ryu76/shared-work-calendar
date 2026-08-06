@@ -543,3 +543,28 @@ Risk:
 
 Next Phase:
 - Continue the task group with the smallest remaining behavior-preserving file-endpoint slice (image edit) behind the existing SQL-free router/service boundary, then run focused task coverage and the full regression suite.
+
+## Codex Execution PRD — task image-edit router/service slice (2026-08-06 11:48:16 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: task image-upload and attachment endpoints, Dashboard/Admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `POST /api/tasks/{task_id}/images/{image_id}/edit` private-image revision endpoint into the existing SQL-free `backend/routers/tasks.py` boundary and delegated it to `TaskService.edit_task_image`.
+- Preserved first-password-change enforcement, task-level authorization before private-file access, Pydantic direction validation, both established Korean 404 messages, safe local rotation, unique private derivative storage, 0700 parent / best-effort 0600 file permissions, non-destructive source revision tracking, atomic SQL transaction behavior, cleanup on failure, metadata redaction, audit payload/event/client IP, and the `{image, direction, non_destructive}` response schema. API URLs, request/response schemas, database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/import verification confirms `Shared Work Calendar MVP` still has **44** routes and registers exactly one `POST /api/tasks/{task_id}/images/{image_id}/edit` route. The task router contains no `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved private-image edit endpoint body and supplies existing rotation/suffix helpers to `TaskService`.
+- `backend/routers/tasks.py` — adds the unchanged image-edit HTTP endpoint with existing dependency behavior.
+- `backend/services/task_service.py` — adds the injected authorized non-destructive image-edit operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused image regression: `python -m unittest test_main.CalendarApiTests.test_private_image_rotation_is_authorized_non_destructive_and_audited test_main.CalendarApiTests.test_private_image_upload_validation_authorization_and_deletion test_acceptance.PhaseOneAcceptanceTests.test_phase_one_task_authorization_status_images_calendar_and_audit_acceptance -v` (from `backend`): **PASS** — 3 tests in **9.854s**. This covers direct-URL authorization, invalid edit direction validation, private rotation, non-destructive source retention, image metadata redaction, audit events, and Phase-1 image authorization behavior.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/tasks.py services/task_service.py main.py && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/tasks.py && git diff --check && python -c "...route assertions..."` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, exactly one image-edit route, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: **PASS** — all **27 tests** passed in **95.170s**; JavaScript syntax, Python compilation, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains repository SQL as an intentional intermediate service boundary. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the three verified source files. A tracked sensitive-file scan found no database, DPAPI/key, certificate, `.env`, or private-upload path; none is included.
+
+Next Phase:
+- Continue the task group with the smallest remaining behavior-preserving file-endpoint slice (image upload or one attachment operation) behind the existing SQL-free router/service boundary, then run focused task coverage and the full regression suite.

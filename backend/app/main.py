@@ -34,7 +34,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from core.logging import configure_logging
     from database import DB_PATH, connect, sqlite3
     from schemas.requests import (
-        ContactIn, ContactPatch, ImageEditIn, NotificationPreferencesIn,
+        ContactIn, ContactPatch, NotificationPreferencesIn,
         OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from routers.auth import create_router as create_auth_router
@@ -48,7 +48,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.core.logging import configure_logging
     from backend.database import DB_PATH, connect, sqlite3
     from backend.schemas.requests import (
-        ContactIn, ContactPatch, ImageEditIn, NotificationPreferencesIn,
+        ContactIn, ContactPatch, NotificationPreferencesIn,
         OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from backend.routers.auth import create_router as create_auth_router
@@ -978,50 +978,6 @@ async def upload_task_images(
             await upload.close()
 
 
-@app.post("/api/tasks/{task_id}/images/{image_id}/edit")
-def edit_task_image(
-    task_id: int, image_id: int, payload: ImageEditIn, request: Request, user: sqlite3.Row = Depends(current_user)
-):
-    """Create a private non-destructive clockwise/counterclockwise image revision."""
-    user = password_changed_user(user)
-    created_path: Path | None = None
-    try:
-        with db() as c:
-            accessible_task(c, task_id, user)
-            image = c.execute("SELECT * FROM task_images WHERE id=? AND task_id=?", (image_id, task_id)).fetchone()
-            if not image:
-                raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
-            source_path = private_image_path(image["storage_key"])
-            if not source_path.is_file():
-                raise HTTPException(status_code=404, detail="이미지 파일을 찾을 수 없습니다.")
-            edited_content = rotate_private_image(source_path.read_bytes(), image["mime_type"], payload.direction)
-            storage_key = f"edits/{task_id}/{uuid.uuid4().hex}{IMAGE_SUFFIXES[image['mime_type']]}"
-            destination = private_image_path(storage_key)
-            destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            destination.write_bytes(edited_content)
-            try:
-                os.chmod(destination, 0o600)
-            except OSError:
-                pass
-            created_path = destination
-            c.execute(
-                "INSERT INTO task_image_edits(task_id,image_id,source_storage_key,result_storage_key,direction,edited_by,created_at) VALUES(?,?,?,?,?,?,?)",
-                (task_id, image_id, image["storage_key"], storage_key, payload.direction, user["id"], now()),
-            )
-            c.execute("UPDATE task_images SET storage_key=?,size_bytes=? WHERE id=?", (storage_key, len(edited_content), image_id))
-            updated = c.execute("SELECT * FROM task_images WHERE id=?", (image_id,)).fetchone()
-            result = image_view(updated)
-            audit(c, user["id"], "TASK_IMAGE_EDITED", "TASK", task_id,
-                  before={"image_id": image_id, "direction": payload.direction},
-                  after={"image": result, "direction": payload.direction},
-                  ip=request.client.host if request.client else None)
-            return {"image": result, "direction": payload.direction, "non_destructive": True}
-    except Exception:
-        if created_path is not None:
-            created_path.unlink(missing_ok=True)
-        raise
-
-
 @app.post("/api/tasks/{task_id}/attachments", status_code=201)
 async def upload_task_attachments(
     task_id: int, request: Request, attachments: list[UploadFile] = File(...), user: sqlite3.Row = Depends(current_user)
@@ -1301,6 +1257,8 @@ app.include_router(
             task_history,
             private_image_path,
             image_view,
+            rotate_private_image,
+            IMAGE_SUFFIXES,
         ),
         current_user,
         password_changed_user,
