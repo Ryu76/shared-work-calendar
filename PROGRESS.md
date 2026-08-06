@@ -794,3 +794,29 @@ Risk:
 
 Next Phase:
 - Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice behind an SQL-free router/service boundary, then run focused coverage and the full regression suite.
+
+## Codex Execution PRD — organization creation router/service slice (2026-08-06 14:47:48 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: remaining master/admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `POST /api/organizations` endpoint into the existing SQL-free `backend/routers/master.py` boundary and delegated create-or-reuse behavior and audit writing to `MasterService.create_organization`.
+- Preserved authenticated first-password-change enforcement; existing `OrganizationIn` validation; status **201** for both a newly created organization and a same-name reuse; active boolean response projection; `ORGANIZATION_CREATED` audit actor/IP/payload behavior only for a new row; and the existing API URL/request-response schema. Database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/static verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one `POST /api/organizations` route. `backend/routers/master.py` contains no SQL operation or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved organization-creation endpoint body and injects existing time/audit helpers into `MasterService`.
+- `backend/routers/master.py` — adds the unchanged organization-creation HTTP endpoint with existing authentication behavior.
+- `backend/services/master_service.py` — adds the extracted create-or-reuse organization operation.
+- `backend/test_main.py` — extends master lifecycle coverage for direct organization creation and same-name reuse.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused master regression: `python -m unittest test_main.CalendarApiTests.test_request_master_management_authorization_lifecycle_and_audit -v` (from `backend`): **PASS** — 1 test in **2.332s**. It covers direct member organization creation/reuse plus the existing master authorization, lifecycle, and audit flow.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/master.py services/master_service.py main.py && python -c "...route contract..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/master.py && git diff --check` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, exactly one organization-create route, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && python -c "...package route assertion..." && git diff --check`: **PASS** — all **27 tests** passed in **92.615s**; JavaScript syntax, Python compilation, package import, unchanged 44-route contract, and whitespace checks passed.
+
+Risk:
+- `TaskService`, `DashboardService`, `UserService`, `AuthService`, `NotificationService`, and `MasterService` still contain repository SQL as intentional intermediate service boundaries. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the four verified non-sensitive source/test files. No database, DPAPI/key file, plaintext backup, private upload, secret, or `.env` is included.
+
+Next Phase:
+- Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice behind an SQL-free router/service boundary, then run focused coverage and the full regression suite.

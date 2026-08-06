@@ -33,7 +33,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from database import DB_PATH, connect, sqlite3
     from schemas.requests import (
         ContactIn, ContactPatch,
-        OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
+        OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from routers.auth import create_router as create_auth_router
     from routers.dashboard import create_router as create_dashboard_router
@@ -53,7 +53,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.database import DB_PATH, connect, sqlite3
     from backend.schemas.requests import (
         ContactIn, ContactPatch,
-        OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
+        OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from backend.routers.auth import create_router as create_auth_router
     from backend.routers.dashboard import create_router as create_dashboard_router
@@ -663,25 +663,6 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
     return output.getvalue()
 
 
-@app.post("/api/organizations", status_code=201)
-def create_organization(payload: OrganizationIn, request: Request, user: sqlite3.Row=Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c:
-        existing = c.execute("SELECT * FROM organizations WHERE name=?", (payload.name,)).fetchone()
-        if existing:
-            return organization_view(existing)
-        timestamp = now()
-        org_id = c.execute(
-            "INSERT INTO organizations(name,is_active,created_at,updated_at) VALUES(?,1,?,?)",
-            (payload.name, timestamp, timestamp),
-        ).lastrowid
-        row = c.execute("SELECT * FROM organizations WHERE id=?", (org_id,)).fetchone()
-        result = organization_view(row)
-        audit(c, user["id"], "ORGANIZATION_CREATED", "ORGANIZATION", org_id, after=result,
-              ip=request.client.host if request.client else None)
-        return result
-
-
 @app.get("/api/request-contacts")
 def contacts(q: str="", user: sqlite3.Row=Depends(current_user)):
     user = password_changed_user(user)
@@ -846,7 +827,7 @@ app.include_router(
 )
 app.include_router(
     create_master_router(
-        MasterService(db, organization_view),
+        MasterService(db, organization_view, now, audit),
         current_user,
         password_changed_user,
     )
