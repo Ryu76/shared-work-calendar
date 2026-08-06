@@ -425,9 +425,7 @@ class TaskService:
         """Serve one private image after the established task-level authorization."""
         with self._db() as connection:
             self._accessible_task(connection, task_id, user)
-            image = connection.execute(
-                "SELECT * FROM task_images WHERE id=? AND task_id=?", (image_id, task_id)
-            ).fetchone()
+            image = self._repository.task_image(connection, task_id, image_id)
             if not image:
                 raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
             path = self._private_image_path(image["storage_key"])

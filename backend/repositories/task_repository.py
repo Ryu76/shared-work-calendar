@@ -215,6 +215,13 @@ class TaskRepository:
         return connection.execute("SELECT * FROM task_images WHERE id=?", (image_id,)).fetchone()
 
     @staticmethod
+    def task_image(connection: Any, task_id: int, image_id: int) -> Any:
+        """Return one image metadata row belonging to the given task."""
+        return connection.execute(
+            "SELECT * FROM task_images WHERE id=? AND task_id=?", (image_id, task_id)
+        ).fetchone()
+
+    @staticmethod
     def attachment_count(connection: Any, task_id: int) -> int:
         """Return the current number of document/video attachments on one task."""
         return connection.execute(
