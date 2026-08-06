@@ -38,8 +38,10 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
         OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from routers.auth import create_router as create_auth_router
+    from routers.tasks import create_router as create_task_router
     from routers.users import create_router as create_users_router
     from services.auth_service import AuthService
+    from services.task_service import TaskService
     from services.user_service import UserService
 except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository root.
     from backend.core.config import load_settings
@@ -50,8 +52,10 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
         OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from backend.routers.auth import create_router as create_auth_router
+    from backend.routers.tasks import create_router as create_task_router
     from backend.routers.users import create_router as create_users_router
     from backend.services.auth_service import AuthService
+    from backend.services.task_service import TaskService
     from backend.services.user_service import UserService
 
 # Keep the original backend-root configuration boundary after moving this module
@@ -849,69 +853,6 @@ def statistics(
         }
 
 
-@app.get("/api/tasks")
-def list_tasks(
-    status: Literal["RECEIVED", "IN_PROGRESS", "COMPLETED"] | None = None,
-    q: str | None = Query(None, max_length=200),
-    received_from: date | None = None,
-    received_to: date | None = None,
-    due_from: date | None = None,
-    due_to: date | None = None,
-    assignee_id: int | None = Query(None, gt=0),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    user: sqlite3.Row = Depends(current_user),
-):
-    """Return one authorized task page plus metadata; filtering is enforced server-side."""
-    user = password_changed_user(user)
-    if received_from and received_to and received_from > received_to:
-        raise HTTPException(status_code=422, detail="접수일 시작일은 종료일보다 늦을 수 없습니다.")
-    if due_from and due_to and due_from > due_to:
-        raise HTTPException(status_code=422, detail="마감일 시작일은 종료일보다 늦을 수 없습니다.")
-    # Members may only request their own assignee filter.  They still see creator-only
-    # work when no assignee filter is applied, as required by the task access policy.
-    if user["role"] != "ADMIN" and assignee_id is not None and assignee_id != user["id"]:
-        raise HTTPException(status_code=403, detail="일반 이용자의 처리자 필터는 본인으로 고정됩니다.")
-    with db() as c:
-        sql, params = task_query_sql(user)
-        if status:
-            sql += " AND t.status=?"
-            params.append(status)
-        if received_from:
-            sql += " AND t.received_date>=?"
-            params.append(str(received_from))
-        if received_to:
-            sql += " AND t.received_date<=?"
-            params.append(str(received_to))
-        if due_from:
-            sql += " AND t.due_date>=?"
-            params.append(str(due_from))
-        if due_to:
-            sql += " AND t.due_date<=?"
-            params.append(str(due_to))
-        keyword = (q or "").strip()
-        if keyword:
-            sql += " AND (t.description LIKE ? OR EXISTS(SELECT 1 FROM request_contacts rc JOIN organizations o ON o.id=rc.organization_id WHERE rc.id=t.requester_contact_id AND (rc.name LIKE ? OR o.name LIKE ?)))"
-            params += [f"%{keyword}%"] * 3
-        if assignee_id is not None:
-            sql += " AND EXISTS(SELECT 1 FROM task_assignees ta_filter WHERE ta_filter.task_id=t.id AND ta_filter.user_id=?)"
-            params.append(assignee_id)
-        total = c.execute(f"SELECT COUNT(*) FROM ({sql})", params).fetchone()[0]
-        summary = {name: 0 for name in ("RECEIVED", "IN_PROGRESS", "COMPLETED")}
-        for row in c.execute(f"SELECT t.status,COUNT(*) count FROM ({sql}) t GROUP BY t.status", params):
-            summary[row["status"]] = row["count"]
-        offset = (page - 1) * page_size
-        rows = c.execute(
-            sql + " ORDER BY CASE t.status WHEN 'RECEIVED' THEN 1 WHEN 'IN_PROGRESS' THEN 2 ELSE 3 END,t.received_date DESC,t.id DESC LIMIT ? OFFSET ?",
-            [*params, page_size, offset],
-        )
-        return {
-            "items": [task_view(c, row) for row in rows],
-            "pagination": {"page": page, "page_size": page_size, "total": total, "total_pages": (total + page_size - 1) // page_size},
-            "summary": summary,
-        }
-
-
 @app.get("/api/tasks/export.xlsx")
 def export_tasks_xlsx(
     request: Request,
@@ -997,12 +938,6 @@ def create_task(payload: TaskIn, request: Request, user: sqlite3.Row=Depends(cur
         task = c.execute("SELECT * FROM tasks WHERE id=?", (cur.lastrowid,)).fetchone()
         audit(c,user["id"],"TASK_CREATED","TASK",cur.lastrowid,after=task_view(c,task),ip=request.client.host if request.client else None)
         return task_view(c,task)
-
-@app.get("/api/tasks/{task_id}")
-def get_task(task_id: int, user: sqlite3.Row=Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c: return task_view(c, accessible_task(c,task_id,user))
-
 
 @app.post("/api/tasks/{task_id}/images", status_code=201)
 async def upload_task_images(
@@ -1502,3 +1437,14 @@ def audit_logs(
     sql += " ORDER BY a.id DESC LIMIT 100"
     with db() as c:
         return [audit_log_view(row) for row in c.execute(sql, params)]
+
+
+# Register after the existing static task-export route so its literal path retains
+# precedence over the legacy ``/api/tasks/{task_id}`` parameter route.
+app.include_router(
+    create_task_router(
+        TaskService(db, task_query_sql, task_view, accessible_task),
+        current_user,
+        password_changed_user,
+    )
+)

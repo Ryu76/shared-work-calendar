@@ -1,0 +1,54 @@
+"""HTTP boundary for unchanged task-read endpoints."""
+from __future__ import annotations
+
+from datetime import date
+from typing import Any, Callable, Literal
+
+from fastapi import APIRouter, Depends, Query
+
+try:
+    from services.task_service import TaskService
+except ModuleNotFoundError:
+    from backend.services.task_service import TaskService
+
+
+def create_router(
+    service: TaskService,
+    current_user: Callable[..., Any],
+    password_changed_user: Callable[[Any], Any],
+) -> APIRouter:
+    """Build legacy task-read routes without placing SQL in the HTTP layer."""
+    router = APIRouter()
+
+    @router.get("/api/tasks")
+    def list_tasks(
+        status: Literal["RECEIVED", "IN_PROGRESS", "COMPLETED"] | None = None,
+        q: str | None = Query(None, max_length=200),
+        received_from: date | None = None,
+        received_to: date | None = None,
+        due_from: date | None = None,
+        due_to: date | None = None,
+        assignee_id: int | None = Query(None, gt=0),
+        page: int = Query(1, ge=1),
+        page_size: int = Query(20, ge=1, le=100),
+        user: Any = Depends(current_user),
+    ):
+        user = password_changed_user(user)
+        return service.list_tasks(
+            status,
+            q,
+            received_from,
+            received_to,
+            due_from,
+            due_to,
+            assignee_id,
+            page,
+            page_size,
+            user,
+        )
+
+    @router.get("/api/tasks/{task_id}")
+    def get_task(task_id: int, user: Any = Depends(current_user)):
+        return service.get_task(task_id, password_changed_user(user))
+
+    return router
