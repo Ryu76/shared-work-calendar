@@ -38,3 +38,19 @@ class UserRepository:
             "UPDATE users SET password_hash=?,must_change_password=0,updated_at=? WHERE id=?",
             (password_hash, updated_at, user_id),
         )
+
+    @staticmethod
+    def create_user(
+        connection: Any,
+        login_id: str,
+        password_hash: str,
+        name: str,
+        role: str,
+        created_at: str,
+        updated_at: str,
+    ) -> Any:
+        return connection.execute(
+            "INSERT INTO users(login_id,password_hash,name,role,is_active,must_change_password,created_at,updated_at) "
+            "VALUES(?,?,?,?,1,1,?,?)",
+            (login_id, password_hash, name, role, created_at, updated_at),
+        )

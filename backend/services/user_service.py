@@ -82,17 +82,14 @@ class UserService:
     def create_user(self, payload: Any, actor: Any, ip_address: str | None) -> dict:
         with self._db() as connection:
             try:
-                cursor = connection.execute(
-                    "INSERT INTO users(login_id,password_hash,name,role,is_active,must_change_password,created_at,updated_at) "
-                    "VALUES(?,?,?,?,1,1,?,?)",
-                    (
-                        payload.login_id,
-                        self._hash_password(payload.temporary_password),
-                        payload.name,
-                        payload.role,
-                        self._now(),
-                        self._now(),
-                    ),
+                cursor = self._repository.create_user(
+                    connection,
+                    payload.login_id,
+                    self._hash_password(payload.temporary_password),
+                    payload.name,
+                    payload.role,
+                    self._now(),
+                    self._now(),
                 )
             except self._integrity_error:
                 raise HTTPException(status_code=409, detail="이미 사용 중인 로그인 ID입니다.")
