@@ -109,6 +109,20 @@ def create_router(
     def get_task_history(task_id: int, user: Any = Depends(current_user)):
         return service.get_task_history(task_id, password_changed_user(user))
 
+    @router.post("/api/tasks/{task_id}/attachments", status_code=status.HTTP_201_CREATED)
+    async def upload_task_attachments(
+        task_id: int,
+        request: Request,
+        attachments: list[UploadFile] = File(...),
+        user: Any = Depends(current_user),
+    ):
+        return await service.upload_task_attachments(
+            task_id,
+            attachments,
+            password_changed_user(user),
+            request.client.host if request.client else None,
+        )
+
     @router.get("/api/tasks/{task_id}/images/{image_id}")
     def serve_task_image(task_id: int, image_id: int, user: Any = Depends(current_user)):
         return service.get_task_image(task_id, image_id, password_changed_user(user))

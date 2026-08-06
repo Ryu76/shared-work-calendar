@@ -643,3 +643,28 @@ Risk:
 
 Next Phase:
 - Continue the task group with the smallest remaining behavior-preserving attachment endpoint slice (upload) behind the existing SQL-free router/service boundary, then run focused attachment coverage and the full regression suite.
+
+## Codex Execution PRD — task attachment-upload router/service slice (2026-08-06 12:58:24 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: Dashboard/Admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `POST /api/tasks/{task_id}/attachments` private document/video upload endpoint into the existing SQL-free `backend/routers/tasks.py` boundary and delegated it to `TaskService.upload_task_attachments`.
+- Preserved first-password-change enforcement; authorization before private-byte inspection; attachment count and per-MIME limits; MIME/signature validation; task limit/trigger translation; private paths/permissions; transaction and cleanup behavior; filename sanitation; SHA-256 storage; metadata redaction; audit payload/event/client IP; multipart-upload closure; status **201**; and the `{\"attachments\": [...]}` response schema. API URLs, request/response schemas, database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/import verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one `POST /api/tasks/{task_id}/attachments` route. The task router contains no `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved private attachment-upload endpoint body and supplies its existing helpers/settings to `TaskService`.
+- `backend/routers/tasks.py` — adds the unchanged multipart attachment-upload HTTP endpoint with existing dependency behavior.
+- `backend/services/task_service.py` — adds the injected authorized private document/video upload operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused attachment regression: `python -m unittest test_main.CalendarApiTests.test_private_document_video_attachment_validation_authorization_and_deletion -v` (from `backend`): **PASS** — 1 test in **3.008s**. It covers upload authorization, validation rejection, private direct-URL download headers/content, deletion, and attachment audit events.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/tasks.py services/task_service.py main.py && python -c "...route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/tasks.py && git diff --check` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, exactly one attachment-upload route, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: **PASS** — all **27 tests** passed in **92.601s**; JavaScript syntax, Python compilation, package import, route assertion, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains repository SQL as an intentional intermediate service boundary. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the three verified source files. A tracked sensitive-file scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; no sensitive file will be included. `backend/calendar.db` and plaintext DB backups are ignored.
+
+Next Phase:
+- Continue the task group with the smallest remaining behavior-preserving task endpoint slice (completed-date calendar or another remaining task route) behind the existing SQL-free router/service boundary, then run focused coverage and the full regression suite.

@@ -6,6 +6,7 @@ view shape, and error responses without importing the ASGI application.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import uuid
@@ -43,6 +44,9 @@ class TaskService:
         max_image_count: int,
         max_image_bytes: int,
         validate_image_upload: Callable[[Any, bytes], str],
+        attachment_rules: Mapping[str, tuple[str, str, int]],
+        max_attachment_count: int,
+        validate_attachment_upload: Callable[[Any, bytes], tuple[str, str, str]],
         integrity_error: type[Exception],
     ) -> None:
         self._db = db
@@ -65,6 +69,9 @@ class TaskService:
         self._max_image_count = max_image_count
         self._max_image_bytes = max_image_bytes
         self._validate_image_upload = validate_image_upload
+        self._attachment_rules = attachment_rules
+        self._max_attachment_count = max_attachment_count
+        self._validate_attachment_upload = validate_attachment_upload
         self._integrity_error = integrity_error
 
     def create_task(self, payload: Any, user: Any, ip_address: str | None) -> dict:
@@ -373,6 +380,77 @@ class TaskService:
                 raise
         finally:
             for upload in images:
+                await upload.close()
+
+    async def upload_task_attachments(
+        self, task_id: int, attachments: list[Any], user: Any, ip_address: str | None
+    ) -> dict:
+        """Store validated private documents/videos with the existing audit behavior."""
+        if not attachments or len(attachments) > self._max_attachment_count:
+            raise HTTPException(status_code=422, detail="한 번에 문서/동영상 첨부는 1개 이상 10개 이하만 업로드할 수 있습니다.")
+        # Authorize before inspecting private bytes, preserving direct-URL protection.
+        with self._db() as connection:
+            self._accessible_task(connection, task_id, user)
+        prepared: list[tuple[Any, bytes, str, str, str]] = []
+        created_paths: list[Path] = []
+        try:
+            for upload in attachments:
+                rule = self._attachment_rules.get((upload.content_type or "").lower())
+                if not rule:
+                    raise HTTPException(status_code=422, detail="문서는 PDF, TXT, DOCX, XLSX만, 동영상은 MP4, WEBM만 허용합니다.")
+                content = await upload.read(rule[2] + 1)
+                if not content or len(content) > rule[2]:
+                    limit_mb = rule[2] // (1024 * 1024)
+                    attachment_kind = "문서" if rule[0] == "DOCUMENT" else "동영상"
+                    raise HTTPException(status_code=422, detail=f"{attachment_kind} 파일당 최대 크기는 {limit_mb}MB입니다.")
+                attachment_type, suffix, mime_type = self._validate_attachment_upload(upload, content)
+                prepared.append((upload, content, attachment_type, suffix, mime_type))
+            with self._db() as connection:
+                self._accessible_task(connection, task_id, user)
+                existing_count = connection.execute(
+                    "SELECT COUNT(*) FROM task_attachments WHERE task_id=?", (task_id,)
+                ).fetchone()[0]
+                if existing_count + len(prepared) > self._max_attachment_count:
+                    raise HTTPException(status_code=422, detail="업무당 문서/동영상 첨부는 최대 10개입니다.")
+                self._upload_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+                uploaded = []
+                for upload, content, attachment_type, suffix, mime_type in prepared:
+                    storage_key = f"attachments/{task_id}/{uuid.uuid4().hex}{suffix}"
+                    destination = self._private_upload_path(storage_key)
+                    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    destination.write_bytes(content)
+                    try:
+                        os.chmod(destination, 0o600)
+                    except OSError:
+                        pass
+                    created_paths.append(destination)
+                    filename = Path(upload.filename or f"attachment{suffix}").name[-255:] or f"attachment{suffix}"
+                    attachment_id = connection.execute(
+                        "INSERT INTO task_attachments(task_id,storage_key,original_filename,mime_type,attachment_type,size_bytes,sha256,uploaded_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                        (
+                            task_id, storage_key, filename, mime_type, attachment_type, len(content),
+                            hashlib.sha256(content).hexdigest(), user["id"], self._now(),
+                        ),
+                    ).lastrowid
+                    row = connection.execute(
+                        "SELECT * FROM task_attachments WHERE id=?", (attachment_id,)
+                    ).fetchone()
+                    uploaded.append(self._attachment_view(row))
+                self._audit(
+                    connection, user["id"], "TASK_ATTACHMENT_UPLOADED", "TASK", task_id,
+                    after={"attachments": uploaded}, ip=ip_address,
+                )
+                return {"attachments": uploaded}
+        except self._integrity_error as exc:
+            for path in created_paths:
+                path.unlink(missing_ok=True)
+            raise HTTPException(status_code=422, detail="업무당 문서/동영상 첨부는 최대 10개입니다.") from exc
+        except Exception:
+            for path in created_paths:
+                path.unlink(missing_ok=True)
+            raise
+        finally:
+            for upload in attachments:
                 await upload.close()
 
     def get_task_history(self, task_id: int, user: Any) -> list[dict]:
