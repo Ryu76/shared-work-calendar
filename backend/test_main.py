@@ -116,6 +116,22 @@ class CalendarApiTests(unittest.TestCase):
     def test_admin_user_lifecycle_validation_authorization_and_last_admin_protection(self):
         admin = self.admin()
         created_id = self.create_member(admin, "user_management_member")
+        users = client.get("/api/admin/users", headers=admin)
+        self.assertEqual(users.status_code, 200, users.text)
+        listed = next(item for item in users.json() if item["id"] == created_id)
+        self.assertEqual(
+            {key: listed[key] for key in ("id", "login_id", "name", "role", "is_active", "must_change_password")},
+            {
+                "id": created_id,
+                "login_id": "user_management_member",
+                "name": "user_management_member",
+                "role": "MEMBER",
+                "is_active": True,
+                "must_change_password": True,
+            },
+        )
+        self.assertTrue(listed["created_at"])
+        self.assertTrue(listed["updated_at"])
         member, _ = self.login("user_management_member", "password-123")
         changed = client.post(
             "/api/me/password", headers=member,

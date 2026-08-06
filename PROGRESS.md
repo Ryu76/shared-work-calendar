@@ -1098,3 +1098,28 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining user-service behavior-preserving slice: move the administrator user-list query into `UserRepository`, then run focused authorization coverage and the full regression suite.
+
+## Codex Execution PRD — administrator user-list repository slice (2026-08-06 18:16:12 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: most service SQL is still not repository-only, global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization are pending.
+- Added the small persistence-only `UserRepository.list_users` operation and moved only the administrator user-list query from `UserService.list_users` into it.
+- Preserved the existing `GET /api/admin/users` URL and request/response schema; administrator and forced-password-change dependency; active-first/name ordering; response fields; integer-to-boolean projection for `is_active` and `must_change_password`; SQLCipher transaction behavior; database schema/data; key material; uploads; secrets; `.env`; notification delivery; deployment; and external-service behavior.
+- The unchanged application contract still registers 44 routes with exactly one `GET /api/admin/users` route. `UserService.list_users` delegates its extracted lookup to `UserRepository`; the extracted user-list SQL is absent from the service.
+
+Modified Files:
+- `backend/repositories/user_repository.py` — adds the administrator user-list persistence operation.
+- `backend/services/user_service.py` — delegates only the administrator user-list lookup through `UserRepository` while retaining the established response projection.
+- `backend/test_main.py` — extends administrator lifecycle coverage to assert the unchanged user-list status and full created-user projection.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused user lifecycle regression: `python -m unittest test_main.CalendarApiTests.test_admin_user_lifecycle_validation_authorization_and_last_admin_protection -v` (from `backend`): **PASS** — 1 test in **2.661s**. It now covers the administrator list response together with administrator-only lifecycle actions, validation, last-admin protection, audit behavior, and invalidation of a deactivated account's existing token.
+- Static/contract verification: `python -m compileall -q app/main.py services/user_service.py repositories/user_repository.py routers/users.py main.py`; package title/44-route/single-GET-user-list/single-POST-user-create assertions; extracted-user-list-SQL absence assertion; SQL-free user-router check; and `git diff --check`: **PASS**.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...package route/repository assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/users.py && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **94.339s**; JavaScript syntax, Python compilation, package import, unchanged 44-route contract, repository delegation/extracted-query-absence checks, SQL-free router check, and whitespace checks passed.
+
+Risk:
+- `UserService` still contains user-create and user-update SQL; `TaskService`, `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/repositories/user_repository.py`, `backend/services/user_service.py`, and `backend/test_main.py`. A tracked sensitive-path scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining user-service behavior-preserving slice: move the administrator user-create insert into `UserRepository`, then run focused authorization coverage and the full regression suite.

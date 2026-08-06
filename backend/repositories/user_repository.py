@@ -16,6 +16,15 @@ class UserRepository:
         )
 
     @staticmethod
+    def list_users(connection: Any) -> list[Any]:
+        return list(
+            connection.execute(
+                "SELECT id,login_id,name,role,is_active,must_change_password,created_at,updated_at "
+                "FROM users ORDER BY is_active DESC,name"
+            )
+        )
+
+    @staticmethod
     def find_active_by_id(connection: Any, user_id: int) -> Any:
         return connection.execute(
             "SELECT * FROM users WHERE id=? AND is_active=1", (user_id,)

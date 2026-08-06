@@ -76,10 +76,7 @@ class UserService:
                     "is_active": bool(row["is_active"]),
                     "must_change_password": bool(row["must_change_password"]),
                 }
-                for row in connection.execute(
-                    "SELECT id,login_id,name,role,is_active,must_change_password,created_at,updated_at "
-                    "FROM users ORDER BY is_active DESC,name"
-                )
+                for row in self._repository.list_users(connection)
             ]
 
     def create_user(self, payload: Any, actor: Any, ip_address: str | None) -> dict:
