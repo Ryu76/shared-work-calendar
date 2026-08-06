@@ -693,3 +693,28 @@ Risk:
 
 Next Phase:
 - Continue the dashboard group with the smallest remaining behavior-preserving endpoint slice (completed-date calendar or XLSX export) behind an SQL-free router/service boundary, then run focused dashboard coverage and the full regression suite.
+
+## Codex Execution PRD — completed-date calendar router/service slice (2026-08-06 13:34:36 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: XLSX export, notification/master/admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `GET /api/completed-calendar` endpoint into the existing SQL-free `backend/routers/dashboard.py` boundary and delegated completed-month filtering and task projection to `DashboardService.completed_calendar`.
+- Preserved first-password-change enforcement; exact required `month` query parameter behavior; strict `YYYY-MM` validation and Korean 422 response; inclusive month-boundary semantics; completed-status filtering; existing server-side authorized task scope; task projection and response list schema; and the existing API URL. Database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/import verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one `GET /api/completed-calendar` route. `backend/routers/dashboard.py` contains no SQL operation or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved completed-date calendar endpoint body and supplies the existing task projection helper to `DashboardService`.
+- `backend/routers/dashboard.py` — adds the unchanged completed-date calendar HTTP endpoint with existing dependency behavior.
+- `backend/services/dashboard_service.py` — adds the extracted authorized completed-month calendar operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused completed-calendar regression: `python -m unittest test_main.CalendarApiTests.test_completed_date_report_calendar_uses_task_scope_and_month_validation -v` (from `backend`): **PASS** — 1 test in **2.196s**. It covers member scope, admin scope, completed-month filtering, and malformed-month rejection.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/dashboard.py services/dashboard_service.py main.py && python -c "...route assertions..." && git diff --check` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, exactly one completed-calendar route, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && python -c "...package import and route assertions..." && git diff --check`: **PASS** — all **27 tests** passed in **96.215s**; JavaScript syntax, Python compilation, package import, unchanged 44-route contract, and whitespace checks passed.
+
+Risk:
+- `TaskService` and `DashboardService` still contain repository SQL as intentional intermediate service boundaries. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the three verified source files. A tracked sensitive-file scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the dashboard group with the smallest remaining behavior-preserving endpoint slice (XLSX export) behind an SQL-free router/service boundary, then run focused export coverage and the full regression suite.

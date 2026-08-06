@@ -34,4 +34,8 @@ def create_router(
             password_changed_user(user),
         )
 
+    @router.get("/api/completed-calendar")
+    def completed_calendar(month: str, user: Any = Depends(current_user)):
+        return service.completed_calendar(month, password_changed_user(user))
+
     return router

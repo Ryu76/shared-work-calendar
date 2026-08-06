@@ -1,6 +1,7 @@
 """Dashboard aggregate operations extracted from the HTTP router."""
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Any, Callable, ContextManager
 
@@ -14,9 +15,11 @@ class DashboardService:
         self,
         db: Callable[[], ContextManager[Any]],
         task_query_sql: Callable[[Any], tuple[str, list]],
+        task_view: Callable[[Any, Any], dict],
     ) -> None:
         self._db = db
         self._task_query_sql = task_query_sql
+        self._task_view = task_view
 
     @staticmethod
     def _apply_statistics_filters(
@@ -101,3 +104,23 @@ class DashboardService:
                 "by_user": by_user,
                 "user_totals_note": "공동 처리 업무는 각 처리자에게 1건씩 집계됩니다.",
             }
+
+    def completed_calendar(self, month: str, user: Any) -> list[dict]:
+        """Return unchanged authorized completed-task report calendar rows."""
+        if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+            raise HTTPException(status_code=422, detail="month는 유효한 YYYY-MM 형식이어야 합니다.")
+        year, month_number = map(int, month.split("-"))
+        first_day = date(year, month_number, 1)
+        next_month = (
+            date(year + 1, 1, 1)
+            if month_number == 12
+            else date(year, month_number + 1, 1)
+        )
+        with self._db() as connection:
+            sql, params = self._task_query_sql(user)
+            sql += (
+                " AND t.status='COMPLETED' AND t.completed_date>=? "
+                "AND t.completed_date<? ORDER BY t.completed_date,t.id"
+            )
+            params.extend([str(first_day), str(next_month)])
+            return [self._task_view(connection, row) for row in connection.execute(sql, params)]

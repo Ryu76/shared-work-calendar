@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
-import re
 import secrets
 import uuid
 import zipfile
@@ -846,22 +845,6 @@ def export_tasks_xlsx(
     )
 
 
-@app.get("/api/completed-calendar")
-def completed_calendar(month: str, user: sqlite3.Row=Depends(current_user)):
-    """Return only caller-authorized completed tasks for a strictly validated month."""
-    user = password_changed_user(user)
-    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
-        raise HTTPException(status_code=422, detail="month는 유효한 YYYY-MM 형식이어야 합니다.")
-    year, month_number = map(int, month.split("-"))
-    first_day = date(year, month_number, 1)
-    next_month = date(year + 1, 1, 1) if month_number == 12 else date(year, month_number + 1, 1)
-    with db() as c:
-        sql, params = task_query_sql(user)
-        sql += " AND t.status='COMPLETED' AND t.completed_date>=? AND t.completed_date<? ORDER BY t.completed_date,t.id"
-        params.extend([str(first_day), str(next_month)])
-        return [task_view(c, row) for row in c.execute(sql, params)]
-
-
 @app.get("/api/organizations")
 def organizations(q: str="", user: sqlite3.Row=Depends(current_user)):
     user = password_changed_user(user)
@@ -1009,7 +992,7 @@ def audit_logs(
 # precedence over the legacy ``/api/tasks/{task_id}`` parameter route.
 app.include_router(
     create_dashboard_router(
-        DashboardService(db, task_query_sql),
+        DashboardService(db, task_query_sql, task_view),
         current_user,
         password_changed_user,
     )
