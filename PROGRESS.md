@@ -1269,3 +1269,27 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move the task-update write/read persistence into `TaskRepository`, then run focused task-update/authorization coverage and the full regression suite.
+
+## Codex Execution PRD — task-update repository persistence slice (2026-08-06 20:06:34 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: Task/Dashboard/Notification/Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the small persistence-only `TaskRepository.update_task` operation and moved only the task-update write, notification-outbox invalidation, optional task-assignee replacement, and updated-task row lookup from `TaskService.update_task` into it.
+- Preserved `PATCH /api/tasks/{task_id}` URL/status/request-response schema; existing task authorization, active-assignee and date/status validation; contact/master/audit transaction behavior; notification invalidation behavior; multi-assignee replacement; SQLCipher behavior; database schema/data; DPAPI/key material; uploads; secrets; `.env`; notification delivery; deployment; and external-service behavior.
+- `TaskService.update_task` delegates the extracted persistence to `TaskRepository`; its update operation no longer contains the extracted task update, notification-outbox delete, or task-assignee insert/delete SQL. The application still has exactly one `PATCH /api/tasks/{task_id}` and one `POST /api/tasks` route, and `routers/tasks.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/task_repository.py` — adds task-update, outbox-refresh, optional assignee-replacement, and updated-row persistence.
+- `backend/services/task_service.py` — delegates only task-update persistence through `TaskRepository` while retaining authorization, validation, task-view, audit, and transaction behavior.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused task-update regressions: `python -m unittest test_main.CalendarApiTests.test_task_detail_update_history_and_deletion_authorization test_main.CalendarApiTests.test_due_dates_local_notification_outbox_preferences_and_authorization -v` (from `backend`): **PASS** — 2 tests in **6.600s**. They cover authorized updates, history/audit, deletion authorization, due-date update/clearing, and local-notification outbox refresh behavior.
+- Static/boundary verification: `node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...AST-scoped update-task repository boundary and route assertions..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/tasks.py && git diff --check` (from `backend`): **PASS**.
+- Full regression: `python -m unittest discover -s . -p 'test*.py' -v` (from `backend`): **PASS** — all **29 tests** passed in **99.155s**. JavaScript syntax, Python compilation, task-update repository-boundary assertions, unchanged task-route contract, SQL-free task router, and whitespace checks then passed in the static/boundary verification above.
+
+Risk:
+- `TaskService` still contains task delete, attachment, image, calendar, and listing SQL; `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/repositories/task_repository.py` and `backend/services/task_service.py`. A changed-path sensitive-file scan is required before commit; database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, and secret files must remain excluded.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move the task soft-delete/outbox-cleanup persistence into `TaskRepository`, then run focused deletion/authorization coverage and the full regression suite.

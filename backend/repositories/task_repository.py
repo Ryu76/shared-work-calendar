@@ -51,3 +51,43 @@ class TaskRepository:
             )
         task = connection.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
         return task_id, task
+
+    @staticmethod
+    def update_task(
+        connection: Any,
+        task_id: int,
+        requester_contact_id: int,
+        status: str,
+        description: str,
+        received_date: str,
+        completed_date: str | None,
+        due_date: str | None,
+        updated_at: str,
+        refresh_notifications: bool,
+        assignee_ids: list[int] | None,
+        assigned_at: list[str],
+    ) -> Any:
+        """Persist one task update and its optional assignee replacement."""
+        connection.execute(
+            "UPDATE tasks SET requester_contact_id=?,status=?,description=?,received_date=?,completed_date=?,due_date=?,updated_at=? WHERE id=?",
+            (
+                requester_contact_id,
+                status,
+                description,
+                received_date,
+                completed_date,
+                due_date,
+                updated_at,
+                task_id,
+            ),
+        )
+        if refresh_notifications:
+            connection.execute("DELETE FROM notification_outbox WHERE task_id=?", (task_id,))
+        if assignee_ids is not None:
+            connection.execute("DELETE FROM task_assignees WHERE task_id=?", (task_id,))
+            for assignee_id, timestamp in zip(assignee_ids, assigned_at, strict=True):
+                connection.execute(
+                    "INSERT INTO task_assignees(task_id,user_id,assigned_at) VALUES(?,?,?)",
+                    (task_id, assignee_id, timestamp),
+                )
+        return connection.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()

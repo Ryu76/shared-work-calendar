@@ -250,35 +250,26 @@ class TaskService:
                 else old["requester_contact_id"]
             )
             description = payload.description if payload.description is not None else old["description"]
-            connection.execute(
-                "UPDATE tasks SET requester_contact_id=?,status=?,description=?,received_date=?,completed_date=?,due_date=?,updated_at=? WHERE id=?",
-                (
-                    contact_id,
-                    next_status,
-                    description,
-                    str(received),
-                    str(completed) if completed else None,
-                    str(due) if due else None,
-                    self._now(),
-                    task_id,
-                ),
-            )
             notification_needs_refresh = (
                 old["due_date"] != (str(due) if due else None)
                 or old["status"] != next_status
                 or old["description"] != description
                 or payload.assignee_ids is not None
             )
-            if notification_needs_refresh:
-                connection.execute("DELETE FROM notification_outbox WHERE task_id=?", (task_id,))
-            if payload.assignee_ids is not None:
-                connection.execute("DELETE FROM task_assignees WHERE task_id=?", (task_id,))
-                for assignee_id in assignee_ids:
-                    connection.execute(
-                        "INSERT INTO task_assignees(task_id,user_id,assigned_at) VALUES(?,?,?)",
-                        (task_id, assignee_id, self._now()),
-                    )
-            updated = connection.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+            updated = self._repository.update_task(
+                connection,
+                task_id,
+                contact_id,
+                next_status,
+                description,
+                str(received),
+                str(completed) if completed else None,
+                str(due) if due else None,
+                self._now(),
+                notification_needs_refresh,
+                payload.assignee_ids,
+                [self._now() for _ in assignee_ids] if payload.assignee_ids is not None else [],
+            )
             after = self._task_view(connection, updated)
             if self._task_changes(before, after):
                 self._audit(
