@@ -37,11 +37,13 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     )
     from routers.auth import create_router as create_auth_router
     from routers.dashboard import create_router as create_dashboard_router
+    from routers.master import create_router as create_master_router
     from routers.notifications import create_router as create_notification_router
     from routers.tasks import create_router as create_task_router
     from routers.users import create_router as create_users_router
     from services.auth_service import AuthService
     from services.dashboard_service import DashboardService
+    from services.master_service import MasterService
     from services.notification_service import NotificationService
     from services.task_service import TaskService
     from services.user_service import UserService
@@ -55,11 +57,13 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     )
     from backend.routers.auth import create_router as create_auth_router
     from backend.routers.dashboard import create_router as create_dashboard_router
+    from backend.routers.master import create_router as create_master_router
     from backend.routers.notifications import create_router as create_notification_router
     from backend.routers.tasks import create_router as create_task_router
     from backend.routers.users import create_router as create_users_router
     from backend.services.auth_service import AuthService
     from backend.services.dashboard_service import DashboardService
+    from backend.services.master_service import MasterService
     from backend.services.notification_service import NotificationService
     from backend.services.task_service import TaskService
     from backend.services.user_service import UserService
@@ -659,17 +663,6 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
     return output.getvalue()
 
 
-@app.get("/api/organizations")
-def organizations(q: str="", user: sqlite3.Row=Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c:
-        rows = c.execute(
-            "SELECT * FROM organizations WHERE is_active=1 AND name LIKE ? ORDER BY name LIMIT 20",
-            (f"%{q.strip()}%",),
-        )
-        return [organization_view(row) for row in rows]
-
-
 @app.post("/api/organizations", status_code=201)
 def create_organization(payload: OrganizationIn, request: Request, user: sqlite3.Row=Depends(current_user)):
     user = password_changed_user(user)
@@ -849,5 +842,12 @@ app.include_router(
         current_user,
         password_changed_user,
         admin_required,
+    )
+)
+app.include_router(
+    create_master_router(
+        MasterService(db, organization_view),
+        current_user,
+        password_changed_user,
     )
 )
