@@ -445,10 +445,7 @@ class TaskService:
         """Authorize first, then return a private attachment with forced download headers."""
         with self._db() as connection:
             self._accessible_task(connection, task_id, user)
-            attachment = connection.execute(
-                "SELECT * FROM task_attachments WHERE id=? AND task_id=?",
-                (attachment_id, task_id),
-            ).fetchone()
+            attachment = self._repository.task_attachment(connection, task_id, attachment_id)
             if not attachment:
                 raise HTTPException(status_code=404, detail="첨부 파일을 찾을 수 없습니다.")
             path = self._private_upload_path(attachment["storage_key"])
@@ -472,15 +469,12 @@ class TaskService:
         """Delete one authorized private attachment with its established audit event."""
         with self._db() as connection:
             self._accessible_task(connection, task_id, user)
-            attachment = connection.execute(
-                "SELECT * FROM task_attachments WHERE id=? AND task_id=?",
-                (attachment_id, task_id),
-            ).fetchone()
+            attachment = self._repository.task_attachment(connection, task_id, attachment_id)
             if not attachment:
                 raise HTTPException(status_code=404, detail="첨부 파일을 찾을 수 없습니다.")
             result = self._attachment_view(attachment)
             path = self._private_upload_path(attachment["storage_key"])
-            connection.execute("DELETE FROM task_attachments WHERE id=?", (attachment_id,))
+            self._repository.delete_task_attachment(connection, attachment_id)
             self._audit(
                 connection,
                 user["id"],

@@ -252,3 +252,16 @@ class TaskRepository:
         return connection.execute(
             "SELECT * FROM task_attachments WHERE id=?", (attachment_id,)
         ).fetchone()
+
+    @staticmethod
+    def task_attachment(connection: Any, task_id: int, attachment_id: int) -> Any:
+        """Return one attachment metadata row belonging to the given task."""
+        return connection.execute(
+            "SELECT * FROM task_attachments WHERE id=? AND task_id=?",
+            (attachment_id, task_id),
+        ).fetchone()
+
+    @staticmethod
+    def delete_task_attachment(connection: Any, attachment_id: int) -> None:
+        """Delete one task-attachment metadata row after service authorization."""
+        connection.execute("DELETE FROM task_attachments WHERE id=?", (attachment_id,))
