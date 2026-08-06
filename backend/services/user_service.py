@@ -51,9 +51,11 @@ class UserService:
         if payload.current_password == payload.new_password:
             raise HTTPException(status_code=422, detail="새 비밀번호는 현재 비밀번호와 달라야 합니다.")
         with self._db() as connection:
-            connection.execute(
-                "UPDATE users SET password_hash=?,must_change_password=0,updated_at=? WHERE id=?",
-                (self._hash_password(payload.new_password), self._now(), user["id"]),
+            self._repository.update_password(
+                connection,
+                self._hash_password(payload.new_password),
+                self._now(),
+                user["id"],
             )
             self._audit(
                 connection,

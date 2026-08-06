@@ -1074,3 +1074,27 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining authentication-adjacent behavior-preserving slice: move the password-change update from `UserService` into `UserRepository`, then run focused authorization coverage and the full regression suite.
+
+## Codex Execution PRD — user password-update repository slice (2026-08-06 17:59:38 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: most service SQL is still not repository-only, global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization are pending.
+- Added the small persistence-only `UserRepository.update_password` operation and moved only the password-change write from `UserService.change_password` into it.
+- Preserved the existing `POST /api/me/password` URL and request/response schema; current-password verification; same-password validation; Argon2id hashing; forced-password-change clearing; password-change audit content/actor/IP behavior; transaction behavior; and existing session behavior. Database schema/data, SQLCipher behavior, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- The unchanged application contract still registers 44 routes and exactly one `POST /api/me/password` route. `UserService.change_password` delegates its extracted write to `UserRepository`; the extracted password-update SQL is absent from the service.
+
+Modified Files:
+- `backend/repositories/user_repository.py` — adds the password-change persistence operation.
+- `backend/services/user_service.py` — delegates only the password-change write through `UserRepository` while retaining validation, transaction, and audit behavior.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused password regression: `python -m unittest test_main.CalendarApiTests.test_first_login_requires_password_change_and_blocks_work_apis -v` (from `backend`): **PASS** — 1 test in **2.365s**. It covers required password change, wrong-current-password rejection, successful change, work-API access after change, old-password rejection, new-password login, and password-change auditing.
+- Static/contract verification: compilation; repository delegation/extracted-SQL-absence assertion; package title/44-route/single-password-route assertion; and `git diff --check`: **PASS**.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...repository/password boundary and 44-route assertion..." && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **90.569s**; JavaScript syntax, Python compilation, package import, unchanged 44-route/single-password-route contract, repository delegation/extracted-query-absence check, and whitespace checks passed.
+
+Risk:
+- `UserService` still contains user-list, user-create, and user-update SQL; `TaskService`, `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/repositories/user_repository.py` and `backend/services/user_service.py`. A changed-path sensitive-file scan is required before commit; database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, and secret files must remain excluded.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining user-service behavior-preserving slice: move the administrator user-list query into `UserRepository`, then run focused authorization coverage and the full regression suite.

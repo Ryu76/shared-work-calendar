@@ -5,7 +5,7 @@ from typing import Any
 
 
 class UserRepository:
-    """Perform only the user-row reads needed by user-account operations."""
+    """Perform only persistence operations for user-account records."""
 
     @staticmethod
     def active_assignees(connection: Any) -> list[Any]:
@@ -20,3 +20,12 @@ class UserRepository:
         return connection.execute(
             "SELECT * FROM users WHERE id=? AND is_active=1", (user_id,)
         ).fetchone()
+
+    @staticmethod
+    def update_password(
+        connection: Any, password_hash: str, updated_at: str, user_id: int
+    ) -> None:
+        connection.execute(
+            "UPDATE users SET password_hash=?,must_change_password=0,updated_at=? WHERE id=?",
+            (password_hash, updated_at, user_id),
+        )
