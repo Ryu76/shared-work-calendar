@@ -112,7 +112,7 @@ class UserService:
 
     def patch_user(self, user_id: int, payload: Any, actor: Any, ip_address: str | None) -> dict:
         with self._db() as connection:
-            target = connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            target = self._repository.find_by_id(connection, user_id)
             if not target:
                 raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
             new_role = payload.role or target["role"]

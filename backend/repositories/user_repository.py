@@ -31,6 +31,10 @@ class UserRepository:
         ).fetchone()
 
     @staticmethod
+    def find_by_id(connection: Any, user_id: int) -> Any:
+        return connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+
+    @staticmethod
     def update_password(
         connection: Any, password_hash: str, updated_at: str, user_id: int
     ) -> None:

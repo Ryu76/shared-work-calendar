@@ -1147,3 +1147,27 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining user-service behavior-preserving slice: move the administrator user-update lookup into `UserRepository`, then run focused authorization coverage and the full regression suite.
+
+## Codex Execution PRD — administrator user-update lookup repository slice (2026-08-06 18:45:35 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: user-update count/write and most non-user service SQL are still outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the small persistence-only `UserRepository.find_by_id` operation and moved only the administrator user-update target lookup from `UserService.patch_user` into it.
+- Preserved the existing `PATCH /api/admin/users/{user_id}` URL and request/response schema; administrator and forced-password-change dependencies; unknown-user 404 detail; last-active-admin protection; partial field update logic; password hashing/session invalidation; audit before/after content and actor/IP behavior; transaction behavior; SQLCipher behavior; database schema/data; key material; uploads; secrets; `.env`; notification delivery; deployment; and external-service behavior.
+- The unchanged application contract still registers 44 routes with exactly one `PATCH /api/admin/users/{user_id}` route. `UserService.patch_user` delegates its extracted target lookup to `UserRepository`; the extracted `SELECT * FROM users WHERE id=?` SQL is absent from the service.
+
+Modified Files:
+- `backend/repositories/user_repository.py` — adds the administrator user-update target lookup persistence operation.
+- `backend/services/user_service.py` — delegates only the user-update target lookup through `UserRepository` while retaining existing business, transaction, session, and audit behavior.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused user-lifecycle regression: `python -m unittest test_main.CalendarApiTests.test_admin_user_lifecycle_validation_authorization_and_last_admin_protection -v` (from `backend`): **PASS** — 1 test in **2.590s**. It covers administrator-only lifecycle actions, update behavior, last-admin protection, audit behavior, and invalidation of a deactivated account's existing token.
+- Static/contract verification: `python -m compileall -q app/main.py services/user_service.py repositories/user_repository.py routers/users.py main.py`; package 44-route/single-PATCH-user-route assertion; repository delegation/extracted-SQL-absence assertion; SQL-free user-router check; and `git diff --check`: **PASS**.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...repository/update-lookup boundary and 44-route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/users.py && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **94.036s**; JavaScript syntax, Python compilation, unchanged 44-route contract, repository boundary assertions, SQL-free router check, and whitespace checks passed.
+
+Risk:
+- `UserService` still contains user-update count/write SQL; `TaskService`, `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/repositories/user_repository.py` and `backend/services/user_service.py`; the changed-path sensitive-file scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path. None is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining user-service behavior-preserving slice: move the active-administrator count used by user updates into `UserRepository`, then run focused authorization coverage and the full regression suite.
