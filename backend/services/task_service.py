@@ -12,6 +12,7 @@ import uuid
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable, ContextManager, Mapping
+from urllib.parse import quote
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
@@ -33,6 +34,7 @@ class TaskService:
         task_changes: Callable[[dict, dict], list[str]],
         task_history: Callable[[Any, int], list[dict]],
         private_image_path: Callable[[str], Any],
+        private_upload_path: Callable[[str], Any],
         image_view: Callable[[Any], dict],
         rotate_private_image: Callable[[bytes, str, str], bytes],
         image_suffixes: Mapping[str, str],
@@ -53,6 +55,7 @@ class TaskService:
         self._task_changes = task_changes
         self._task_history = task_history
         self._private_image_path = private_image_path
+        self._private_upload_path = private_upload_path
         self._image_view = image_view
         self._rotate_private_image = rotate_private_image
         self._image_suffixes = image_suffixes
@@ -392,6 +395,33 @@ class TaskService:
                 path,
                 media_type=image["mime_type"],
                 headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+            )
+
+    def download_task_attachment(
+        self, task_id: int, attachment_id: int, user: Any
+    ) -> FileResponse:
+        """Authorize first, then return a private attachment with forced download headers."""
+        with self._db() as connection:
+            self._accessible_task(connection, task_id, user)
+            attachment = connection.execute(
+                "SELECT * FROM task_attachments WHERE id=? AND task_id=?",
+                (attachment_id, task_id),
+            ).fetchone()
+            if not attachment:
+                raise HTTPException(status_code=404, detail="첨부 파일을 찾을 수 없습니다.")
+            path = self._private_upload_path(attachment["storage_key"])
+            if not path.is_file():
+                raise HTTPException(status_code=404, detail="첨부 파일을 찾을 수 없습니다.")
+            safe_name = quote(attachment["original_filename"], safe="")
+            return FileResponse(
+                path,
+                media_type=attachment["mime_type"],
+                filename=attachment["original_filename"],
+                headers={
+                    "Cache-Control": "private, no-store",
+                    "X-Content-Type-Options": "nosniff",
+                    "Content-Disposition": f"attachment; filename*=UTF-8''{safe_name}",
+                },
             )
 
     def edit_task_image(

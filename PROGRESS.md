@@ -593,3 +593,28 @@ Risk:
 
 Next Phase:
 - Continue the task group with the smallest remaining behavior-preserving attachment endpoint slice behind the existing SQL-free router/service boundary, then run focused attachment coverage and the full regression suite.
+
+## Codex Execution PRD — task attachment-download router/service slice (2026-08-06 12:23:39 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: attachment upload/delete endpoints, Dashboard/Admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `GET /api/tasks/{task_id}/attachments/{attachment_id}` private attachment download endpoint into the existing SQL-free `backend/routers/tasks.py` boundary and delegated it to `TaskService.download_task_attachment`.
+- Preserved first-password-change enforcement, task-level authorization before private-file access, the established Korean 404 behavior for missing attachment metadata or content, forced download disposition with UTF-8 filename encoding, original MIME type, `private, no-store` cache policy, and `nosniff` response header. API URLs, request/response schemas, database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/import verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one `GET /api/tasks/{task_id}/attachments/{attachment_id}` route. The task router contains no `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved private attachment download endpoint body and supplies the existing guarded private-upload path helper to `TaskService`.
+- `backend/routers/tasks.py` — adds the unchanged attachment-download HTTP endpoint with existing dependency behavior.
+- `backend/services/task_service.py` — adds the injected authorized private attachment download operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused attachment regression: `python -m unittest test_main.CalendarApiTests.test_private_document_video_attachment_validation_authorization_and_deletion -v` (from `backend`): **PASS** — 1 test in **3.058s**. This covers attachment upload validation, direct-URL authorization, forced private download headers and content, deletion, and attachment audit behavior.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/tasks.py services/task_service.py main.py && python -c "...route assertion..." && git diff --check` (from `backend`) plus a source-token assertion (from repository root): **PASS** — compilation, unchanged title/44-route contract, exactly one attachment-download route, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: **PASS** — all **27 tests** passed in **95.905s**; JavaScript syntax, Python compilation, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains repository SQL as an intentional intermediate service boundary. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the three verified source files. No database, DPAPI/key file, plaintext backup, private upload, secret, or `.env` is included.
+
+Next Phase:
+- Continue the task group with the smallest remaining behavior-preserving attachment endpoint slice (delete or upload) behind the existing SQL-free router/service boundary, then run focused attachment coverage and the full regression suite.

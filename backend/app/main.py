@@ -9,7 +9,6 @@ import uuid
 import zipfile
 import warnings
 from io import BytesIO
-from urllib.parse import quote
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -983,29 +982,6 @@ async def upload_task_attachments(
             await upload.close()
 
 
-@app.get("/api/tasks/{task_id}/attachments/{attachment_id}")
-def download_task_attachment(task_id: int, attachment_id: int, user: sqlite3.Row = Depends(current_user)):
-    """Authorize first, then return a private attachment with forced download headers."""
-    user = password_changed_user(user)
-    with db() as c:
-        accessible_task(c, task_id, user)
-        attachment = c.execute("SELECT * FROM task_attachments WHERE id=? AND task_id=?", (attachment_id, task_id)).fetchone()
-        if not attachment:
-            raise HTTPException(status_code=404, detail="첨부 파일을 찾을 수 없습니다.")
-        path = private_upload_path(attachment["storage_key"])
-        if not path.is_file():
-            raise HTTPException(status_code=404, detail="첨부 파일을 찾을 수 없습니다.")
-        safe_name = quote(attachment["original_filename"], safe="")
-        return FileResponse(
-            path, media_type=attachment["mime_type"], filename=attachment["original_filename"],
-            headers={
-                "Cache-Control": "private, no-store",
-                "X-Content-Type-Options": "nosniff",
-                "Content-Disposition": f"attachment; filename*=UTF-8''{safe_name}",
-            },
-        )
-
-
 @app.delete("/api/tasks/{task_id}/attachments/{attachment_id}")
 def delete_task_attachment(task_id: int, attachment_id: int, request: Request, user: sqlite3.Row = Depends(current_user)):
     user = password_changed_user(user)
@@ -1198,6 +1174,7 @@ app.include_router(
             task_changes,
             task_history,
             private_image_path,
+            private_upload_path,
             image_view,
             rotate_private_image,
             IMAGE_SUFFIXES,
