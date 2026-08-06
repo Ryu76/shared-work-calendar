@@ -32,15 +32,17 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from core.logging import configure_logging
     from database import DB_PATH, connect, sqlite3
     from schemas.requests import (
-        ContactIn, ContactPatch, NotificationPreferencesIn,
+        ContactIn, ContactPatch,
         OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from routers.auth import create_router as create_auth_router
     from routers.dashboard import create_router as create_dashboard_router
+    from routers.notifications import create_router as create_notification_router
     from routers.tasks import create_router as create_task_router
     from routers.users import create_router as create_users_router
     from services.auth_service import AuthService
     from services.dashboard_service import DashboardService
+    from services.notification_service import NotificationService
     from services.task_service import TaskService
     from services.user_service import UserService
 except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository root.
@@ -48,15 +50,17 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.core.logging import configure_logging
     from backend.database import DB_PATH, connect, sqlite3
     from backend.schemas.requests import (
-        ContactIn, ContactPatch, NotificationPreferencesIn,
+        ContactIn, ContactPatch,
         OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from backend.routers.auth import create_router as create_auth_router
     from backend.routers.dashboard import create_router as create_dashboard_router
+    from backend.routers.notifications import create_router as create_notification_router
     from backend.routers.tasks import create_router as create_task_router
     from backend.routers.users import create_router as create_users_router
     from backend.services.auth_service import AuthService
     from backend.services.dashboard_service import DashboardService
+    from backend.services.notification_service import NotificationService
     from backend.services.task_service import TaskService
     from backend.services.user_service import UserService
 
@@ -392,79 +396,6 @@ def index():
     return FileResponse(STATIC_DIR / "index.html")
 
 
-@app.get("/api/me/notification-preferences")
-def notification_preferences(user: sqlite3.Row = Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c:
-        return notification_preferences_view(c, user["id"])
-
-
-@app.patch("/api/me/notification-preferences")
-def patch_notification_preferences(
-    payload: NotificationPreferencesIn, request: Request, user: sqlite3.Row = Depends(current_user)
-):
-    user = password_changed_user(user)
-    with db() as c:
-        before = notification_preferences_view(c, user["id"])
-        c.execute(
-            "UPDATE notification_preferences SET due_soon_enabled=?,overdue_enabled=?,updated_at=? WHERE user_id=?",
-            (int(payload.due_soon_enabled), int(payload.overdue_enabled), now(), user["id"]),
-        )
-        after = notification_preferences_view(c, user["id"])
-        # Disabling a local category also removes unread/read local entries from it;
-        # no message is queued for an external service.
-        if not payload.due_soon_enabled:
-            c.execute("DELETE FROM notification_outbox WHERE user_id=? AND kind IN ('DUE_SOON','DUE_TODAY')", (user["id"],))
-        if not payload.overdue_enabled:
-            c.execute("DELETE FROM notification_outbox WHERE user_id=? AND kind='OVERDUE'", (user["id"],))
-        if before != after:
-            audit(c, user["id"], "NOTIFICATION_PREFERENCES_UPDATED", "USER", user["id"], before, after,
-                  request.client.host if request.client else None)
-        return after
-
-
-@app.get("/api/notifications")
-def notifications(
-    unread_only: bool = False,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    user: sqlite3.Row = Depends(current_user),
-):
-    """Return only the caller's private local in-app due-date outbox entries."""
-    user = password_changed_user(user)
-    with db() as c:
-        refresh_due_notifications(c, user)
-        where = "WHERE n.user_id=?"
-        params: list[int] = [user["id"]]
-        if unread_only:
-            where += " AND n.read_at IS NULL"
-        total = c.execute(f"SELECT COUNT(*) FROM notification_outbox n {where}", params).fetchone()[0]
-        rows = c.execute(
-            "SELECT n.id,n.task_id,n.kind,n.due_date,n.message,n.read_at,n.created_at,t.description,t.status "
-            "FROM notification_outbox n JOIN tasks t ON t.id=n.task_id " + where +
-            " ORDER BY n.read_at IS NOT NULL,n.id DESC LIMIT ? OFFSET ?",
-            [*params, page_size, (page - 1) * page_size],
-        )
-        return {
-            "items": [dict(row) | {"is_read": row["read_at"] is not None} for row in rows],
-            "pagination": {"page": page, "page_size": page_size, "total": total, "total_pages": (total + page_size - 1) // page_size},
-            "delivery": "IN_APP_OUTBOX_ONLY",
-        }
-
-
-@app.post("/api/notifications/{notification_id}/read")
-def read_notification(notification_id: int, user: sqlite3.Row = Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c:
-        updated = c.execute(
-            "UPDATE notification_outbox SET read_at=COALESCE(read_at,?) WHERE id=? AND user_id=?",
-            (now(), notification_id, user["id"]),
-        )
-        if not updated.rowcount:
-            raise HTTPException(status_code=404, detail="알림을 찾을 수 없습니다.")
-        return {"ok": True}
-
-
 def organization_view(row: sqlite3.Row) -> dict:
     out = dict(row)
     out["is_active"] = bool(out["is_active"])
@@ -728,56 +659,6 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
     return output.getvalue()
 
 
-def notification_preferences_view(c: sqlite3.Connection, user_id: int) -> dict:
-    """Return (and lazily create) a user's safe, local-only reminder settings."""
-    c.execute(
-        "INSERT INTO notification_preferences(user_id,due_soon_enabled,overdue_enabled,updated_at) "
-        "VALUES(?,1,1,?) ON CONFLICT(user_id) DO NOTHING",
-        (user_id, now()),
-    )
-    row = c.execute("SELECT * FROM notification_preferences WHERE user_id=?", (user_id,)).fetchone()
-    return {
-        "due_soon_enabled": bool(row["due_soon_enabled"]),
-        "overdue_enabled": bool(row["overdue_enabled"]),
-        "updated_at": row["updated_at"],
-        "delivery": "IN_APP_OUTBOX_ONLY",
-    }
-
-
-def refresh_due_notifications(c: sqlite3.Connection, user: sqlite3.Row) -> None:
-    """Populate a user's private in-app due-date outbox without external delivery."""
-    preferences = notification_preferences_view(c, user["id"])
-    if not preferences["due_soon_enabled"]:
-        c.execute("DELETE FROM notification_outbox WHERE user_id=? AND kind IN ('DUE_SOON','DUE_TODAY')", (user["id"],))
-    if not preferences["overdue_enabled"]:
-        c.execute("DELETE FROM notification_outbox WHERE user_id=? AND kind='OVERDUE'", (user["id"],))
-    task_sql, params = task_query_sql(user)
-    task_sql += " AND t.status!='COMPLETED' AND t.due_date IS NOT NULL"
-    today = today_in_seoul()
-    for task in c.execute(task_sql, params):
-        due = date.fromisoformat(task["due_date"])
-        if due < today:
-            kind = "OVERDUE"
-            enabled = preferences["overdue_enabled"]
-            message = f"마감일이 지났습니다: {task['description'][:80]}"
-        elif due == today:
-            kind = "DUE_TODAY"
-            enabled = preferences["due_soon_enabled"]
-            message = f"오늘 마감: {task['description'][:80]}"
-        elif due <= today + timedelta(days=3):
-            kind = "DUE_SOON"
-            enabled = preferences["due_soon_enabled"]
-            message = f"마감 임박 ({due.isoformat()}): {task['description'][:80]}"
-        else:
-            continue
-        if enabled:
-            c.execute(
-                "INSERT INTO notification_outbox(user_id,task_id,kind,due_date,message,created_at) "
-                "VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,task_id,kind,due_date) DO NOTHING",
-                (user["id"], task["id"], kind, str(due), message, now()),
-            )
-
-
 @app.get("/api/organizations")
 def organizations(q: str="", user: sqlite3.Row=Depends(current_user)):
     user = password_changed_user(user)
@@ -923,6 +804,13 @@ def audit_logs(
 
 # Register after the existing static task-export route so its literal path retains
 # precedence over the legacy ``/api/tasks/{task_id}`` parameter route.
+app.include_router(
+    create_notification_router(
+        NotificationService(db, task_query_sql, now, lambda: today_in_seoul(), audit),
+        current_user,
+        password_changed_user,
+    )
+)
 app.include_router(
     create_dashboard_router(
         DashboardService(db, task_query_sql, task_view, task_export_workbook, audit),

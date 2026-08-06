@@ -743,3 +743,28 @@ Risk:
 
 Next Phase:
 - Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice behind an SQL-free router/service boundary, then run focused coverage and the full regression suite.
+
+## Codex Execution PRD — local notification router/service slice (2026-08-06 14:11:11 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: master/admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged local-only notification preference and outbox endpoints into the new SQL-free `backend/routers/notifications.py` boundary and delegated preference storage, due-date refresh, caller-scoped listing/pagination, and read acknowledgement to `NotificationService`.
+- Preserved first-password-change enforcement; all four existing endpoints and request/response schemas; lazy preference creation; per-user private outbox scope; unread filtering/pagination; local preference audit event and client IP; 404 handling for another user's notification; and `IN_APP_OUTBOX_ONLY` behavior. The injected Seoul-date callback remains patchable by the existing isolated regression suite. No external notification was dispatched, and database schema/data, key material, uploads, secrets, `.env`, deployment, and external-service behavior did not change.
+- Route/static verification confirms `Shared Work Calendar MVP` still registers **44** routes, with exactly one route each for `GET`/`PATCH /api/me/notification-preferences`, `GET /api/notifications`, and `POST /api/notifications/{notification_id}/read`. The notification router contains no SQL operation or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved notification endpoint/helper bodies and injects/registers `NotificationService`.
+- `backend/routers/notifications.py` — adds unchanged local notification HTTP endpoints with existing dependency behavior.
+- `backend/services/notification_service.py` — adds the extracted local-only preference/outbox operations.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused notification regression: `python -m unittest test_main.CalendarApiTests.test_due_dates_local_notification_outbox_preferences_and_authorization -v` (from `backend`): **PASS** — 1 test in **3.401s**. It covers due-date validation, caller-only outbox visibility, Seoul-date reminder generation, read authorization, stale-message refresh, preference disabling, and the audit event.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/notifications.py services/notification_service.py main.py && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/notifications.py && python -c "...route contract..." && git diff --check` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: **PASS** — all **27 tests** passed in **92.053s**; JavaScript syntax, Python compilation, and whitespace checks passed.
+
+Risk:
+- `TaskService`, `DashboardService`, `UserService`, `AuthService`, and `NotificationService` still contain repository SQL as intentional intermediate service boundaries. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the three verified source files. A tracked sensitive-path scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice behind an SQL-free router/service boundary, then run focused coverage and the full regression suite.
