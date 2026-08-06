@@ -38,6 +38,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from routers.notifications import create_router as create_notification_router
     from routers.tasks import create_router as create_task_router
     from routers.users import create_router as create_users_router
+    from repositories.auth_repository import AuthRepository
     from services.auth_service import AuthService
     from services.dashboard_service import DashboardService
     from services.master_service import MasterService
@@ -55,6 +56,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.routers.notifications import create_router as create_notification_router
     from backend.routers.tasks import create_router as create_task_router
     from backend.routers.users import create_router as create_users_router
+    from backend.repositories.auth_repository import AuthRepository
     from backend.services.auth_service import AuthService
     from backend.services.dashboard_service import DashboardService
     from backend.services.master_service import MasterService
@@ -362,7 +364,16 @@ def password_changed_user(user: sqlite3.Row) -> sqlite3.Row:
 
 app.include_router(
     create_auth_router(
-        AuthService(db, verify_password, password_hash_needs_upgrade, hash_password, now, SESSIONS, audit),
+        AuthService(
+            db,
+            verify_password,
+            password_hash_needs_upgrade,
+            hash_password,
+            now,
+            SESSIONS,
+            audit,
+            AuthRepository(),
+        ),
         current_user,
     )
 )

@@ -10,6 +10,11 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, ContextManager, MutableMapping
 
+try:
+    from repositories.auth_repository import AuthRepository
+except ModuleNotFoundError:
+    from backend.repositories.auth_repository import AuthRepository
+
 
 class AuthService:
     """Handle login, logout, and current-user response construction."""
@@ -23,6 +28,7 @@ class AuthService:
         now: Callable[[], str],
         sessions: MutableMapping[str, tuple[int, datetime]],
         audit: Callable[..., None],
+        repository: AuthRepository,
     ) -> None:
         self._db = db
         self._verify_password = verify_password
@@ -31,13 +37,12 @@ class AuthService:
         self._now = now
         self._sessions = sessions
         self._audit = audit
+        self._repository = repository
 
     def login(self, payload: Any, ip_address: str | None) -> dict:
         """Authenticate an account and retain the established eight-hour session."""
         with self._db() as connection:
-            user = connection.execute(
-                "SELECT * FROM users WHERE login_id=?", (payload.login_id,)
-            ).fetchone()
+            user = self._repository.find_by_login_id(connection, payload.login_id)
             if not user or not user["is_active"] or not self._verify_password(
                 payload.password, user["password_hash"]
             ):
@@ -53,9 +58,11 @@ class AuthService:
 
                 raise HTTPException(status_code=401, detail="아이디 또는 비밀번호를 확인하세요.")
             if self._password_hash_needs_upgrade(user["password_hash"]):
-                connection.execute(
-                    "UPDATE users SET password_hash=?,updated_at=? WHERE id=?",
-                    (self._hash_password(payload.password), self._now(), user["id"]),
+                self._repository.update_password_hash(
+                    connection,
+                    user["id"],
+                    self._hash_password(payload.password),
+                    self._now(),
                 )
                 self._audit(
                     connection,

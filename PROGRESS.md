@@ -998,3 +998,29 @@ Risk:
 
 Next Phase:
 - Begin the repository phase with one small, behavior-preserving database-operation extraction behind an existing service boundary, then run focused coverage and the full regression suite.
+
+## Codex Execution PRD — authentication repository slice (2026-08-06 17:11:41 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: most service SQL is still not repository-only, global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization are pending.
+- Created the first persistence-only repository boundary, `AuthRepository`, and moved the authentication service's existing login-ID lookup and legacy-password-hash upgrade write into it.
+- Preserved the existing `POST /api/auth/login` URL and request/response schema; login failure/success audit behavior; disabled-account rejection; Argon2id upgrade timing and audit; eight-hour session behavior; database transaction behavior; and all existing external-service behavior. Database schema/data, DPAPI/key material, uploads, secrets, `.env`, notification delivery, and deployment did not change.
+- `AuthService` now contains no SQL operation or `.execute(` token; SQL for this auth slice is confined to `backend/repositories/auth_repository.py`. The application title, 44-route contract, and exactly one login route remain unchanged.
+
+Modified Files:
+- `backend/repositories/__init__.py` — declares the repository package.
+- `backend/repositories/auth_repository.py` — adds authentication user lookup and password-hash update persistence operations.
+- `backend/services/auth_service.py` — delegates those database operations through `AuthRepository` while retaining business logic and transaction/audit control.
+- `backend/app/main.py` — wires the repository into the existing authentication service composition root.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused authentication regression: `python -m unittest test_main.CalendarApiTests.test_argon2id_is_used_for_new_passwords_and_legacy_pbkdf2_upgrades_on_login -v` (from `backend`): **PASS** — 1 test in **2.052s**. It covers new Argon2id password use, rejection on wrong legacy password, successful legacy-password login, hash upgrade, and upgrade audit logging.
+- Static/contract verification: `python -m compileall -q app/main.py services/auth_service.py repositories`; package title/44-route/single-login-route assertion; SQL-free `AuthService` check; repository import assertion; and `git diff --check`: **PASS**.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...package route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' services/auth_service.py && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **91.024s**; JavaScript syntax, Python compilation, package import, unchanged 44-route contract, SQL-free service check, and whitespace checks passed.
+
+Risk:
+- `TaskService`, `DashboardService`, `UserService`, `NotificationService`, and `MasterService` still contain repository SQL as intentional intermediate service boundaries. The PRD requirement that SQL reside only in repositories remains unfulfilled; `AuthRepository` is the first small migrated slice.
+- Before the progress update, `git status --short --untracked-files=all` listed only `backend/app/main.py`, `backend/services/auth_service.py`, and the new `backend/repositories/` Python package. A tracked sensitive-path scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining authentication-adjacent behavior-preserving slice (move active-user lookup from `current_user` into a repository boundary), then run focused authorization coverage and the full regression suite.
