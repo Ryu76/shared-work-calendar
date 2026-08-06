@@ -242,3 +242,79 @@
 - Real verification from repository root: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && python -c "...SQLite schema inspection..."`: **PASS** — all **27 tests** passed in **91.033 seconds**. JavaScript syntax and Python compilation checks passed in the same zero-exit command chain. Coverage includes Phase-1 acceptance; Phase-2 server-side authorization/input validation and legacy SQLite migration behavior; and isolated local Chromium UI flows.
 - Live SQLite inspection: `backend/calendar.db` is **135,168 bytes**; `tasks.due_date` exists; Phase-2 tables `task_attachments`, `notification_preferences`, and `notification_outbox` exist. Python/JavaScript scans found **0** `TODO`, `FIXME`, or `NotImplemented` markers.
 - Safety evidence: notifications remain `IN_APP_OUTBOX_ONLY`; no external notification, message, or other service was contacted. **Remaining authorized roadmap:** none. **Blockers:** none. **Exact next priority:** inspect future PRD/source/user changes and run focused/full regression as warranted; do not invent Phase 3 or alter production, existing data, credentials, deployment, or external-notification delivery without explicit approval.
+
+## Codex Execution PRD — Phase 1 slice (2026-08-06 08:31:52 UTC)
+Completed:
+- Read `docs/Codex_Execution_PRD_backend_refactoring.md` and this record before changes. Confirmed the starting `backend/main.py` was 1,724 lines, while `core/config.py`, `core/logging.py`, and encrypted `database.py` were already separated.
+- Moved the unchanged FastAPI implementation to `backend/app/main.py` and replaced `backend/main.py` with a 16-line compatibility ASGI shim. Existing `import main`, `main:app`, and repository-root `backend.main:app` import styles resolve to the same implementation module, so API URLs and request/response contracts are unchanged.
+- Preserved the pre-move backend-root static and private-upload paths after the move. The test-only legacy migration setup now creates a SQLCipher-backed legacy-shaped SQLite database instead of an unsupported plaintext database opened with an encryption key; it continues to assert the additive `due_date` migration and preserved legacy row.
+- No database schema, live database data, DPAPI key, plaintext backup, secret, `.env`, private upload, API URL, request/response model, or application behavior was changed.
+
+Modified Files:
+- `backend/main.py` — minimal backward-compatible ASGI shim.
+- `backend/app/main.py` — moved existing application implementation without endpoint logic changes; adjusted only module-import and original backend-root path resolution.
+- `backend/test_main.py` — corrected encrypted SQLite migration fixture.
+- `PROGRESS.md` — this verified phase record.
+
+Tests:
+- `python -m unittest test_acceptance.PhaseOneAcceptanceTests.test_phase_one_task_authorization_status_images_calendar_and_audit_acceptance -v` (from `backend`): PASS — 1 test in 7.576s.
+- `python -m unittest test_main.CalendarApiTests.test_due_date_column_migrates_a_preexisting_sqlite_tasks_table -v` (from `backend`): PASS — 1 test in 1.027s.
+- `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: PASS — all 27 tests in 108.491s; JavaScript syntax, Python compilation, and whitespace checks passed.
+- Import verification: `import main` from `backend/` and `import backend.main` from repository root both expose `Shared Work Calendar MVP` with 44 routes.
+- Git status was checked before and after verification; working changes are only the four files listed above (with `backend/app/main.py` new). No commit was made.
+
+Risk:
+- This is an entrypoint/physical-module move only; routers, service boundaries, repository SQL, middleware, exception handling, and schemas are still concentrated in `backend/app/main.py`. Completion conditions are not yet met.
+- The working tree has uncommitted but fully verified source/test/progress changes. Do not commit database files, DPAPI key files, plaintext backups, secrets, or `.env` files.
+
+Next Phase:
+- Phase 2, next small slice: identify and extract one router group (starting with auth) behind the unchanged application instance, with no SQL in its router, then run focused auth and full regression coverage before updating this record.
+
+## Codex Execution PRD — schema extraction slice (2026-08-06 08:37:14 UTC)
+Completed:
+- Extracted all existing Pydantic HTTP request models and their validators from `backend/app/main.py` into `backend/schemas/requests.py`. Validation text, constraints, defaults, PATCH omitted-vs-null behavior, and model names are preserved exactly; the application imports the same names for its existing endpoints.
+- Added the target `backend/schemas/` package. This is an internal module-boundary move only: no API URL, request/response format, database schema/data, key material, secret, `.env`, private upload, external service, or notification behavior changed.
+- `backend/main.py` remains 16 lines; `backend/app/main.py` is now 1,569 lines. Completion conditions remain unmet because endpoints still contain router/service/repository concerns and SQL.
+
+Modified Files:
+- `backend/app/main.py` — replaced inline request model definitions with schema imports.
+- `backend/schemas/__init__.py` — package marker.
+- `backend/schemas/requests.py` — moved Pydantic request schemas and validators.
+- `PROGRESS.md` — this verified status entry.
+
+Tests:
+- Focused schema-boundary regression: `python -m unittest test_main.CalendarApiTests.test_first_login_requires_password_change_and_blocks_work_apis test_main.CalendarApiTests.test_admin_user_lifecycle_validation_authorization_and_last_admin_protection test_main.CalendarApiTests.test_task_list_server_filters_pagination_and_calendar_month_validation -v` (from `backend`): PASS — 3 tests in 6.827s.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: PASS — all 27 tests in 101.054s; JavaScript syntax, Python compilation, and whitespace checks passed.
+- Git status verified before progress update; no commit was made. The working tree contains only `PROGRESS.md`, `backend/main.py`, `backend/app/main.py`, `backend/schemas/`, and `backend/test_main.py`; no database, DPAPI key, plaintext backup, secret, or `.env` file is staged or tracked by this work.
+
+Risk:
+- Service, repository, router, middleware, exception-handler, and response-helper separation are still pending. SQL remains outside repositories, so the PRD completion conditions are not met.
+- The schema move relies on dual absolute/package import paths solely to preserve both established backend-directory and repository-root ASGI imports; both were verified earlier in this run.
+
+Next Phase:
+- Extract the auth endpoint group into a router backed by an auth service, preserving the existing application instance and all auth URLs/request/response behavior. Keep router SQL-free, run focused auth tests plus full regression, then update this record.
+
+## Codex Execution PRD — auth router/service slice (2026-08-06 08:54:51 UTC)
+Completed:
+- Extracted the existing `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/me` endpoint group into `backend/routers/auth.py`. The router performs HTTP request/dependency handling and delegates every operation to `AuthService`; it contains no SQL.
+- Added `backend/services/auth_service.py`, preserving the established SQLCipher transaction provider, Argon2id/PBKDF2-on-login upgrade behavior, eight-hour in-memory session lifetime, exact Korean error response, audit events, authorization header parsing, and user response object.
+- Registered the router on the same `FastAPI` application after the existing authentication dependency is defined. Import verification reports the unchanged application title and **44 routes**, including the same login, logout, and me method/path pairs.
+- This is an internal boundary move only: no API URL, request/response shape, database schema/data, DB key/DPAPI file, upload, secret, `.env`, notification behavior, deployment, or external service changed.
+
+Modified Files:
+- `backend/app/main.py` — registers the extracted auth router and removes only the moved endpoint bodies.
+- `backend/routers/__init__.py` and `backend/routers/auth.py` — router package and SQL-free auth endpoint boundary.
+- `backend/services/__init__.py` and `backend/services/auth_service.py` — injected auth business service.
+- `PROGRESS.md` — this verified status entry.
+
+Tests:
+- Focused existing authentication regression: `python -m unittest test_main.CalendarApiTests.test_first_login_requires_password_change_and_blocks_work_apis test_main.CalendarApiTests.test_argon2id_is_used_for_new_passwords_and_legacy_pbkdf2_upgrades_on_login test_main.CalendarApiTests.test_admin_user_lifecycle_validation_authorization_and_last_admin_protection -v` (from `backend`): **PASS** — 3 tests in **5.648s**. It exercised login failure/success, legacy password upgrade/audit, `/api/me`, and logout.
+- Route/import and syntax verification: `python -m compileall -q app/main.py routers/auth.py services/auth_service.py main.py && python -c "import main; ..."` (from `backend`): **PASS** — application title unchanged, 44 routes, and `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/me` remain registered.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: **PASS** — all **27 tests** in **101.253s**; JavaScript syntax, Python compilation, and whitespace checks passed.
+
+Risk:
+- The `current_user` dependency and password-change route still remain in `backend/app/main.py`; User, Task, Dashboard, and Admin endpoint groups also remain monolithic. Repository extraction, global exception handling, response helpers, middleware, validators, and notification/scheduler layering are still pending, so PRD completion conditions are not met.
+- The working tree contains only verified source/test/progress changes. No database, DPAPI/key, plaintext backup, upload, secret, or `.env` file is included.
+
+Next Phase:
+- Extract the user endpoint group as the next small vertical slice behind a SQL-free router and service, preserving all existing API behavior, then run focused user lifecycle/password tests and the full regression suite.

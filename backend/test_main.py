@@ -1,5 +1,4 @@
 import os
-import sqlite3
 import tempfile
 import unittest
 from io import BytesIO
@@ -421,7 +420,11 @@ class CalendarApiTests(unittest.TestCase):
             with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
                 legacy_db = Path(temp_dir) / "legacy.db"
                 try:
-                    with sqlite3.connect(legacy_db) as connection:
+                    # Production persistence is SQLCipher-backed SQLite. Create a
+                    # legacy-shaped encrypted database so the migration exercises
+                    # a deployable pre-existing database rather than an unsupported
+                    # plaintext file opened with an encryption key.
+                    with main.connect(legacy_db) as connection:
                         connection.execute(
                             "CREATE TABLE tasks (id INTEGER PRIMARY KEY, requester_contact_id INTEGER NOT NULL, status TEXT NOT NULL, "
                             "description TEXT NOT NULL, received_date TEXT NOT NULL, completed_date TEXT, created_by INTEGER NOT NULL, "

@@ -1,1 +1,1 @@
-"""Business services; populated incrementally."""
+"""Application business-service boundaries."""
