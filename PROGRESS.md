@@ -1195,3 +1195,27 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining user-service behavior-preserving slice: move the administrator user-update write into `UserRepository`, then run focused authorization coverage and the full regression suite.
+
+## Codex Execution PRD — administrator user-update write repository slice (2026-08-06 19:15:54 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: most non-user service SQL is still outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the small persistence-only `UserRepository.update_user` operation and moved only the administrator user-update write from `UserService.patch_user` into it.
+- Preserved the existing `PATCH /api/admin/users/{user_id}` URL and request/response schema; administrator and forced-password-change dependencies; unknown-user 404 detail; last-active-admin 409 protection; partial user-update logic; Argon2id password hashing; password-reset forced-password-change behavior; session invalidation; audit before/after content and actor/IP behavior; transaction behavior; SQLCipher behavior; database schema/data; key material; uploads; secrets; `.env`; notification delivery; deployment; and external-service behavior.
+- `UserService.patch_user` delegates the extracted persistence to `UserRepository`; the extracted `UPDATE users` statement is absent from the service. The unchanged application has exactly one `PATCH /api/admin/users/{user_id}` route.
+
+Modified Files:
+- `backend/repositories/user_repository.py` — adds the administrator user-update persistence operation.
+- `backend/services/user_service.py` — delegates only the user-update write through `UserRepository` while retaining business, transaction, session, and audit behavior.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused user-lifecycle regression: `python -m unittest test_main.CalendarApiTests.test_admin_user_lifecycle_validation_authorization_and_last_admin_protection -v` (from `backend`): **PASS** — 1 test in **2.584s**. It exercises administrator-only lifecycle updates, password reset/session invalidation, last-active-admin protection, and audit behavior.
+- Static/contract verification: `python -m compileall -q app/main.py services/user_service.py repositories/user_repository.py routers/users.py main.py`; repository delegation/extracted-SQL-absence assertions; one-PATCH-user-route assertion; SQL-free user-router check; and `git diff --check`: **PASS**.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...repository/update boundary and route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/users.py && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **93.036s**; JavaScript syntax, Python compilation, repository-boundary assertions, unchanged PATCH-user route, SQL-free router check, and whitespace checks passed.
+
+Risk:
+- `UserService` no longer contains user-account SQL; `TaskService`, `DashboardService`, `NotificationService`, and `MasterService` still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/repositories/user_repository.py` and `backend/services/user_service.py`. The changed-path sensitive-file scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving slice: inspect the remaining service SQL and move one cohesive `TaskService` persistence operation into its existing repository, then run focused authorization coverage and the full regression suite.

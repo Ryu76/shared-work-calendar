@@ -126,19 +126,15 @@ class UserService:
                 "role": target["role"],
                 "is_active": bool(target["is_active"]),
             }
-            connection.execute(
-                "UPDATE users SET name=?,role=?,is_active=?,password_hash=COALESCE(?,password_hash),"
-                "must_change_password=CASE WHEN ? IS NULL THEN must_change_password ELSE 1 END,updated_at=? "
-                "WHERE id=?",
-                (
-                    payload.name or target["name"],
-                    new_role,
-                    new_active,
-                    self._hash_password(payload.password) if payload.password else None,
-                    payload.password,
-                    self._now(),
-                    user_id,
-                ),
+            self._repository.update_user(
+                connection,
+                payload.name or target["name"],
+                new_role,
+                new_active,
+                self._hash_password(payload.password) if payload.password else None,
+                payload.password,
+                self._now(),
+                user_id,
             )
             if payload.password or payload.role is not None or payload.is_active is not None:
                 for token, session in list(self._sessions.items()):

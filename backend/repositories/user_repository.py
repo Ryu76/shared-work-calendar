@@ -64,3 +64,21 @@ class UserRepository:
             "VALUES(?,?,?,?,1,1,?,?)",
             (login_id, password_hash, name, role, created_at, updated_at),
         )
+
+    @staticmethod
+    def update_user(
+        connection: Any,
+        name: str,
+        role: str,
+        is_active: int,
+        password_hash: str | None,
+        password: str | None,
+        updated_at: str,
+        user_id: int,
+    ) -> None:
+        connection.execute(
+            "UPDATE users SET name=?,role=?,is_active=?,password_hash=COALESCE(?,password_hash),"
+            "must_change_password=CASE WHEN ? IS NULL THEN must_change_password ELSE 1 END,updated_at=? "
+            "WHERE id=?",
+            (name, role, is_active, password_hash, password, updated_at, user_id),
+        )
