@@ -982,23 +982,6 @@ async def upload_task_attachments(
             await upload.close()
 
 
-@app.delete("/api/tasks/{task_id}/attachments/{attachment_id}")
-def delete_task_attachment(task_id: int, attachment_id: int, request: Request, user: sqlite3.Row = Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c:
-        accessible_task(c, task_id, user)
-        attachment = c.execute("SELECT * FROM task_attachments WHERE id=? AND task_id=?", (attachment_id, task_id)).fetchone()
-        if not attachment:
-            raise HTTPException(status_code=404, detail="첨부 파일을 찾을 수 없습니다.")
-        result = attachment_view(attachment)
-        path = private_upload_path(attachment["storage_key"])
-        c.execute("DELETE FROM task_attachments WHERE id=?", (attachment_id,))
-        audit(c, user["id"], "TASK_ATTACHMENT_DELETED", "TASK", task_id, before={"attachment": result},
-              ip=request.client.host if request.client else None)
-    path.unlink(missing_ok=True)
-    return {"ok": True}
-
-
 @app.get("/api/completed-calendar")
 def completed_calendar(month: str, user: sqlite3.Row=Depends(current_user)):
     """Return only caller-authorized completed tasks for a strictly validated month."""
@@ -1176,6 +1159,7 @@ app.include_router(
             private_image_path,
             private_upload_path,
             image_view,
+            attachment_view,
             rotate_private_image,
             IMAGE_SUFFIXES,
             UPLOAD_DIR,

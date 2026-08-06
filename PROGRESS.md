@@ -618,3 +618,28 @@ Risk:
 
 Next Phase:
 - Continue the task group with the smallest remaining behavior-preserving attachment endpoint slice (delete or upload) behind the existing SQL-free router/service boundary, then run focused attachment coverage and the full regression suite.
+
+## Codex Execution PRD — task attachment-delete router/service slice (2026-08-06 12:39:47 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: attachment upload, Dashboard/Admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `DELETE /api/tasks/{task_id}/attachments/{attachment_id}` private attachment-delete endpoint into the existing SQL-free `backend/routers/tasks.py` boundary and delegated it to `TaskService.delete_task_attachment`.
+- Preserved first-password-change enforcement, task-level authorization before private-file or metadata access, the established Korean 404 behavior, attachment metadata redaction, audit payload/event/client IP, post-transaction private-file cleanup, and the existing success response schema. API URLs, request/response schemas, database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/import verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one each of `GET` and `DELETE /api/tasks/{task_id}/attachments/{attachment_id}`. The task router contains no `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved private attachment-delete endpoint body and supplies the existing attachment metadata projection to `TaskService`.
+- `backend/routers/tasks.py` — adds the unchanged attachment-delete HTTP endpoint with existing dependency behavior.
+- `backend/services/task_service.py` — adds the injected authorized private attachment-delete operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused attachment regression: `python -m unittest test_main.CalendarApiTests.test_private_document_video_attachment_validation_authorization_and_deletion -v` (from `backend`): **PASS** — 1 test in **3.001s**. This covers attachment upload validation, direct-URL authorization, forced private download headers and content, deletion, and attachment audit behavior.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/tasks.py services/task_service.py main.py && python -c "...route assertions..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/tasks.py && git diff --check` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, exactly one attachment-download and attachment-delete route, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: **PASS** — all **27 tests** passed in **95.871s**; JavaScript syntax, Python compilation, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains repository SQL as an intentional intermediate service boundary. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the three verified source files. A tracked sensitive-file scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the task group with the smallest remaining behavior-preserving attachment endpoint slice (upload) behind the existing SQL-free router/service boundary, then run focused attachment coverage and the full regression suite.

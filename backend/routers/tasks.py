@@ -121,6 +121,20 @@ def create_router(
             task_id, attachment_id, password_changed_user(user)
         )
 
+    @router.delete("/api/tasks/{task_id}/attachments/{attachment_id}")
+    def delete_task_attachment(
+        task_id: int,
+        attachment_id: int,
+        request: Request,
+        user: Any = Depends(current_user),
+    ):
+        return service.delete_task_attachment(
+            task_id,
+            attachment_id,
+            password_changed_user(user),
+            request.client.host if request.client else None,
+        )
+
     @router.post("/api/tasks/{task_id}/images/{image_id}/edit")
     def edit_task_image(
         task_id: int,

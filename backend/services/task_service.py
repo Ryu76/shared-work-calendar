@@ -36,6 +36,7 @@ class TaskService:
         private_image_path: Callable[[str], Any],
         private_upload_path: Callable[[str], Any],
         image_view: Callable[[Any], dict],
+        attachment_view: Callable[[Any], dict],
         rotate_private_image: Callable[[bytes, str, str], bytes],
         image_suffixes: Mapping[str, str],
         upload_dir: Path,
@@ -57,6 +58,7 @@ class TaskService:
         self._private_image_path = private_image_path
         self._private_upload_path = private_upload_path
         self._image_view = image_view
+        self._attachment_view = attachment_view
         self._rotate_private_image = rotate_private_image
         self._image_suffixes = image_suffixes
         self._upload_dir = upload_dir
@@ -423,6 +425,33 @@ class TaskService:
                     "Content-Disposition": f"attachment; filename*=UTF-8''{safe_name}",
                 },
             )
+
+    def delete_task_attachment(
+        self, task_id: int, attachment_id: int, user: Any, ip_address: str | None
+    ) -> dict:
+        """Delete one authorized private attachment with its established audit event."""
+        with self._db() as connection:
+            self._accessible_task(connection, task_id, user)
+            attachment = connection.execute(
+                "SELECT * FROM task_attachments WHERE id=? AND task_id=?",
+                (attachment_id, task_id),
+            ).fetchone()
+            if not attachment:
+                raise HTTPException(status_code=404, detail="첨부 파일을 찾을 수 없습니다.")
+            result = self._attachment_view(attachment)
+            path = self._private_upload_path(attachment["storage_key"])
+            connection.execute("DELETE FROM task_attachments WHERE id=?", (attachment_id,))
+            self._audit(
+                connection,
+                user["id"],
+                "TASK_ATTACHMENT_DELETED",
+                "TASK",
+                task_id,
+                before={"attachment": result},
+                ip=ip_address,
+            )
+        path.unlink(missing_ok=True)
+        return {"ok": True}
 
     def edit_task_image(
         self, task_id: int, image_id: int, payload: Any, user: Any, ip_address: str | None
