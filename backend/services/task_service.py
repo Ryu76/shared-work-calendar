@@ -18,6 +18,11 @@ from urllib.parse import quote
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
 
+try:
+    from repositories.task_repository import TaskRepository
+except ModuleNotFoundError:
+    from backend.repositories.task_repository import TaskRepository
+
 
 class TaskService:
     """Handle authorized task listing and detail retrieval."""
@@ -48,6 +53,7 @@ class TaskService:
         max_attachment_count: int,
         validate_attachment_upload: Callable[[Any, bytes], tuple[str, str, str]],
         integrity_error: type[Exception],
+        repository: TaskRepository,
     ) -> None:
         self._db = db
         self._task_query_sql = task_query_sql
@@ -73,6 +79,7 @@ class TaskService:
         self._max_attachment_count = max_attachment_count
         self._validate_attachment_upload = validate_attachment_upload
         self._integrity_error = integrity_error
+        self._repository = repository
 
     def create_task(self, payload: Any, user: Any, ip_address: str | None) -> dict:
         """Create a task with the unchanged validation, audit, and response view."""
@@ -86,10 +93,7 @@ class TaskService:
         if payload.status != "COMPLETED":
             completed = None
         with self._db() as connection:
-            active = {
-                row["id"]
-                for row in connection.execute("SELECT id FROM users WHERE is_active=1")
-            }
+            active = self._repository.active_user_ids(connection)
             if not set(payload.assignee_ids).issubset(active):
                 raise HTTPException(
                     status_code=422,
@@ -215,10 +219,7 @@ class TaskService:
                 if payload.assignee_ids is not None
                 else [assignee["id"] for assignee in before["assignees"]]
             )
-            active = {
-                row["id"]
-                for row in connection.execute("SELECT id FROM users WHERE is_active=1")
-            }
+            active = self._repository.active_user_ids(connection)
             if not set(assignee_ids).issubset(active):
                 raise HTTPException(
                     status_code=422,

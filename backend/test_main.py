@@ -215,6 +215,37 @@ class CalendarApiTests(unittest.TestCase):
         self.assertEqual(client.get(f"/api/tasks/{task_id}", headers=a).status_code, 403)
         self.assertNotEqual(a_id, b_id)
 
+    def test_task_rejects_inactive_assignees_on_create_and_update(self):
+        """The task repository lookup must preserve inactive-assignee rejection."""
+        admin = self.admin()
+        admin_id = client.get("/api/me", headers=admin).json()["id"]
+        inactive_id = self.create_member(admin, "inactive_task_assignee")
+        disabled = client.patch(
+            f"/api/admin/users/{inactive_id}", headers=admin, json={"is_active": False}
+        )
+        self.assertEqual(disabled.status_code, 200, disabled.text)
+        payload = {
+            "contact": {"name": "비활성 처리자 요청", "phone": "010-9191-9191", "organization": "검증 기관"},
+            "description": "비활성 처리자 검증 업무",
+            "status": "RECEIVED",
+        }
+        rejected_create = client.post(
+            "/api/tasks", headers=admin, json=payload | {"assignee_ids": [inactive_id]}
+        )
+        self.assertEqual(rejected_create.status_code, 422, rejected_create.text)
+        self.assertIn("비활성", rejected_create.json()["detail"])
+        created = client.post(
+            "/api/tasks", headers=admin, json=payload | {"assignee_ids": [admin_id]}
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        rejected_update = client.patch(
+            f"/api/tasks/{created.json()['id']}",
+            headers=admin,
+            json={"assignee_ids": [inactive_id]},
+        )
+        self.assertEqual(rejected_update.status_code, 422, rejected_update.text)
+        self.assertIn("비활성", rejected_update.json()["detail"])
+
     def test_completed_status_sets_and_clears_completed_date(self):
         admin = self.admin()
         admin_id = client.get("/api/me", headers=admin).json()["id"]

@@ -1219,3 +1219,28 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving slice: inspect the remaining service SQL and move one cohesive `TaskService` persistence operation into its existing repository, then run focused authorization coverage and the full regression suite.
+
+## Codex Execution PRD — task active-assignee lookup repository slice (2026-08-06 19:34:08 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: most Task/Dashboard/Notification/Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the small persistence-only `TaskRepository.active_user_ids` operation and moved the active-user lookup used by both `TaskService.create_task` and `TaskService.update_task` into it.
+- Preserved `POST /api/tasks` and `PATCH /api/tasks/{task_id}` URLs, request/response schemas, validation detail, active-assignee policy, task authorization, task/contact/audit/notification transaction behavior, SQLCipher behavior, database schema/data, DPAPI/key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior.
+- The extracted `SELECT id FROM users WHERE is_active=1` SQL is absent from `TaskService` and exists only in `TaskRepository`. The application still has exactly one POST and one GET `/api/tasks` route, and `routers/tasks.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/task_repository.py` — adds the persistence-only active task-assignee ID lookup.
+- `backend/services/task_service.py` — injects `TaskRepository` and delegates create/update active-assignee validation lookup to it.
+- `backend/app/main.py` — composes the new repository into the existing task service without changing routes.
+- `backend/test_main.py` — adds HTTP regression coverage that inactive assignees are rejected with the existing 422 behavior on both create and update.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused task-assignee regression: `python -m unittest test_main.CalendarApiTests.test_task_rejects_inactive_assignees_on_create_and_update -v && python -m compileall -q app/main.py services/task_service.py repositories/task_repository.py test_main.py && git diff --check` (from `backend`): **PASS** — 1 test in **1.404s**; Python compilation and whitespace validation passed.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...task active-user repository boundary and API route contract..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/tasks.py && git diff --check` (from `backend`): **PASS** — all **28 tests** passed in **96.100s**; JavaScript syntax, Python compilation, extracted-SQL boundary, unchanged task route contract, SQL-free task router, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains task, attachment, image, calendar, and listing SQL; `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/app/main.py`, `backend/repositories/task_repository.py`, `backend/services/task_service.py`, and `backend/test_main.py`. The changed-path sensitive-file scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move the task-create insert/read persistence into `TaskRepository`, then run focused task creation/authorization coverage and the full regression suite.
