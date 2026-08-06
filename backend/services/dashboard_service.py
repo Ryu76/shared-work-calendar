@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Any, Callable, ContextManager
+from typing import Any, Callable, ContextManager, Literal
 
 from fastapi import HTTPException
 
@@ -16,10 +16,14 @@ class DashboardService:
         db: Callable[[], ContextManager[Any]],
         task_query_sql: Callable[[Any], tuple[str, list]],
         task_view: Callable[[Any, Any], dict],
+        task_export_workbook: Callable[[Any, list, Any], bytes],
+        audit: Callable[..., None],
     ) -> None:
         self._db = db
         self._task_query_sql = task_query_sql
         self._task_view = task_view
+        self._task_export_workbook = task_export_workbook
+        self._audit = audit
 
     @staticmethod
     def _apply_statistics_filters(
@@ -124,3 +128,60 @@ class DashboardService:
             )
             params.extend([str(first_day), str(next_month)])
             return [self._task_view(connection, row) for row in connection.execute(sql, params)]
+
+    def export_tasks_xlsx(
+        self,
+        status: Literal["RECEIVED", "IN_PROGRESS", "COMPLETED"] | None,
+        q: str | None,
+        received_from: date | None,
+        received_to: date | None,
+        due_from: date | None,
+        due_to: date | None,
+        assignee_id: int | None,
+        user: Any,
+        ip: str | None,
+    ) -> bytes:
+        """Create the unchanged, caller-authorized XLSX task export."""
+        if received_from and received_to and received_from > received_to:
+            raise HTTPException(status_code=422, detail="접수일 시작일은 종료일보다 늦을 수 없습니다.")
+        if due_from and due_to and due_from > due_to:
+            raise HTTPException(status_code=422, detail="마감일 시작일은 종료일보다 늦을 수 없습니다.")
+        if user["role"] != "ADMIN" and assignee_id is not None and assignee_id != user["id"]:
+            raise HTTPException(status_code=403, detail="일반 이용자의 처리자 필터는 본인으로 고정됩니다.")
+        with self._db() as connection:
+            sql, params = self._task_query_sql(user)
+            if status:
+                sql += " AND t.status=?"
+                params.append(status)
+            if received_from:
+                sql += " AND t.received_date>=?"
+                params.append(str(received_from))
+            if received_to:
+                sql += " AND t.received_date<=?"
+                params.append(str(received_to))
+            if due_from:
+                sql += " AND t.due_date>=?"
+                params.append(str(due_from))
+            if due_to:
+                sql += " AND t.due_date<=?"
+                params.append(str(due_to))
+            keyword = (q or "").strip()
+            if keyword:
+                sql += " AND (t.description LIKE ? OR EXISTS(SELECT 1 FROM request_contacts rc JOIN organizations o ON o.id=rc.organization_id WHERE rc.id=t.requester_contact_id AND (rc.name LIKE ? OR o.name LIKE ?)))"
+                params += [f"%{keyword}%"] * 3
+            if assignee_id is not None:
+                sql += " AND EXISTS(SELECT 1 FROM task_assignees ta_filter WHERE ta_filter.task_id=t.id AND ta_filter.user_id=?)"
+                params.append(assignee_id)
+            rows = list(connection.execute(
+                sql + " ORDER BY CASE t.status WHEN 'RECEIVED' THEN 1 WHEN 'IN_PROGRESS' THEN 2 ELSE 3 END,t.received_date DESC,t.id DESC LIMIT 10001",
+                params,
+            ))
+            if len(rows) > 10_000:
+                raise HTTPException(status_code=422, detail="엑셀 내보내기는 한 번에 최대 10,000건까지 가능합니다. 필터를 좁혀 다시 시도하세요.")
+            document = self._task_export_workbook(connection, rows, user)
+            self._audit(connection, user["id"], "TASKS_EXPORTED", "TASK_EXPORT", "FILTERED_SCOPE", after={
+                "count": len(rows), "status": status, "received_from": str(received_from) if received_from else None,
+                "received_to": str(received_to) if received_to else None, "due_from": str(due_from) if due_from else None,
+                "due_to": str(due_to) if due_to else None, "assignee_id": assignee_id, "has_keyword": bool(keyword),
+            }, ip=ip)
+            return document

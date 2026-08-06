@@ -778,73 +778,6 @@ def refresh_due_notifications(c: sqlite3.Connection, user: sqlite3.Row) -> None:
             )
 
 
-@app.get("/api/tasks/export.xlsx")
-def export_tasks_xlsx(
-    request: Request,
-    status: Literal["RECEIVED", "IN_PROGRESS", "COMPLETED"] | None = None,
-    q: str | None = Query(None, max_length=200),
-    received_from: date | None = None,
-    received_to: date | None = None,
-    due_from: date | None = None,
-    due_to: date | None = None,
-    assignee_id: int | None = Query(None, gt=0),
-    user: sqlite3.Row = Depends(current_user),
-):
-    """Create a download-only XLSX for the same filtered server-side task scope."""
-    user = password_changed_user(user)
-    if received_from and received_to and received_from > received_to:
-        raise HTTPException(status_code=422, detail="접수일 시작일은 종료일보다 늦을 수 없습니다.")
-    if due_from and due_to and due_from > due_to:
-        raise HTTPException(status_code=422, detail="마감일 시작일은 종료일보다 늦을 수 없습니다.")
-    if user["role"] != "ADMIN" and assignee_id is not None and assignee_id != user["id"]:
-        raise HTTPException(status_code=403, detail="일반 이용자의 처리자 필터는 본인으로 고정됩니다.")
-    with db() as c:
-        sql, params = task_query_sql(user)
-        if status:
-            sql += " AND t.status=?"
-            params.append(status)
-        if received_from:
-            sql += " AND t.received_date>=?"
-            params.append(str(received_from))
-        if received_to:
-            sql += " AND t.received_date<=?"
-            params.append(str(received_to))
-        if due_from:
-            sql += " AND t.due_date>=?"
-            params.append(str(due_from))
-        if due_to:
-            sql += " AND t.due_date<=?"
-            params.append(str(due_to))
-        keyword = (q or "").strip()
-        if keyword:
-            sql += " AND (t.description LIKE ? OR EXISTS(SELECT 1 FROM request_contacts rc JOIN organizations o ON o.id=rc.organization_id WHERE rc.id=t.requester_contact_id AND (rc.name LIKE ? OR o.name LIKE ?)))"
-            params += [f"%{keyword}%"] * 3
-        if assignee_id is not None:
-            sql += " AND EXISTS(SELECT 1 FROM task_assignees ta_filter WHERE ta_filter.task_id=t.id AND ta_filter.user_id=?)"
-            params.append(assignee_id)
-        rows = list(c.execute(
-            sql + " ORDER BY CASE t.status WHEN 'RECEIVED' THEN 1 WHEN 'IN_PROGRESS' THEN 2 ELSE 3 END,t.received_date DESC,t.id DESC LIMIT 10001",
-            params,
-        ))
-        if len(rows) > 10_000:
-            raise HTTPException(status_code=422, detail="엑셀 내보내기는 한 번에 최대 10,000건까지 가능합니다. 필터를 좁혀 다시 시도하세요.")
-        document = task_export_workbook(c, rows, user)
-        audit(c, user["id"], "TASKS_EXPORTED", "TASK_EXPORT", "FILTERED_SCOPE", after={
-            "count": len(rows), "status": status, "received_from": str(received_from) if received_from else None,
-            "received_to": str(received_to) if received_to else None, "due_from": str(due_from) if due_from else None,
-            "due_to": str(due_to) if due_to else None, "assignee_id": assignee_id, "has_keyword": bool(keyword),
-        }, ip=request.client.host if request.client else None)
-    return Response(
-        content=document,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": "attachment; filename=shared-work-calendar-tasks.xlsx",
-            "Cache-Control": "private, no-store",
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
-
-
 @app.get("/api/organizations")
 def organizations(q: str="", user: sqlite3.Row=Depends(current_user)):
     user = password_changed_user(user)
@@ -992,7 +925,7 @@ def audit_logs(
 # precedence over the legacy ``/api/tasks/{task_id}`` parameter route.
 app.include_router(
     create_dashboard_router(
-        DashboardService(db, task_query_sql, task_view),
+        DashboardService(db, task_query_sql, task_view, task_export_workbook, audit),
         current_user,
         password_changed_user,
     )

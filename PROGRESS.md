@@ -718,3 +718,28 @@ Risk:
 
 Next Phase:
 - Continue the dashboard group with the smallest remaining behavior-preserving endpoint slice (XLSX export) behind an SQL-free router/service boundary, then run focused export coverage and the full regression suite.
+
+## Codex Execution PRD — XLSX export router/service slice (2026-08-06 13:52:33 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: notification/master/admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `GET /api/tasks/export.xlsx` endpoint into the existing SQL-free `backend/routers/dashboard.py` boundary and delegated its authorized filtering, export-size validation, local workbook invocation, and audit write to `DashboardService.export_tasks_xlsx`.
+- Preserved first-password-change enforcement; all existing status, keyword, received-date, due-date, and assignee filters; member self-only assignee filtering and 403 rejection of other-user filters; authorized server-side task scope; the 10,000-row limit and Korean validation responses; spreadsheet formula neutralization through the existing workbook helper; `TASKS_EXPORTED` audit payload/client IP; XLSX MIME type; attachment filename; `private, no-store` and `nosniff` response headers; and the existing API URL. Database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/import verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one `GET /api/tasks/export.xlsx` route. `backend/routers/dashboard.py` contains no SQL operation or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved XLSX endpoint body and injects the existing workbook/audit helpers into `DashboardService`.
+- `backend/routers/dashboard.py` — adds the unchanged XLSX export HTTP endpoint with existing dependencies and download response headers.
+- `backend/services/dashboard_service.py` — adds the extracted authorized XLSX export operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused XLSX regression: `python -m unittest test_main.CalendarApiTests.test_excel_export_matches_authorized_filtered_scope_and_is_spreadsheet_safe -v` (from `backend`): **PASS** — 1 test in **2.552s**. It covers authorized filtering, workbook contents, spreadsheet-safe text, download response behavior, audit logging, and foreign-member assignee rejection.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/dashboard.py services/dashboard_service.py main.py && python -c "...route assertions..." && git diff --check` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, exactly one XLSX-export route, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...package import and route assertions..." && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **91.268s**; JavaScript syntax, Python compilation, package import, unchanged 44-route contract, and whitespace checks passed.
+
+Risk:
+- `TaskService` and `DashboardService` still contain repository SQL as intentional intermediate service boundaries. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the three verified source files. No database, DPAPI/key file, plaintext backup, private upload, secret, or `.env` is included.
+
+Next Phase:
+- Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice behind an SQL-free router/service boundary, then run focused coverage and the full regression suite.
