@@ -673,7 +673,7 @@ app.include_router(
 app.include_router(
     create_dashboard_router(
         DashboardService(
-            db, task_query_sql, task_view, task_export_workbook, audit, DASHBOARD_REPOSITORY
+            db, task_view, task_export_workbook, audit, DASHBOARD_REPOSITORY
         ),
         current_user,
         password_changed_user,

@@ -1571,3 +1571,27 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving DashboardService slice: move authorized XLSX-export task-row retrieval into `DashboardRepository`, then run focused export authorization coverage and the full regression suite.
+
+## Codex Execution PRD — XLSX-export repository persistence slice (2026-08-06 23:46:23 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: Notification and Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the persistence-only `DashboardRepository.export_task_rows` operation and moved only the authorized XLSX task-row query from `DashboardService.export_tasks_xlsx` into it.
+- Preserved `GET /api/tasks/export.xlsx` URL, request/response schema, private/no-store download headers, status/date/due-date/assignee/keyword filtering, administrator and member visibility scope, member assignee-filter restriction, result ordering, 10,000-row limit, spreadsheet-safe rendering, audit data, validation status/messages, database schema/data, SQLCipher transaction behavior, uploads, DPAPI/key material, credentials, `.env`, notification delivery, deployment, and external-service behavior.
+- `DashboardService.export_tasks_xlsx` delegates row retrieval to `DashboardRepository` and contains no `.execute(` call; `routers/dashboard.py` remains SQL-free and retains the XLSX route contract.
+
+Modified Files:
+- `backend/repositories/dashboard_repository.py` — adds authorized XLSX task-row retrieval.
+- `backend/services/dashboard_service.py` — delegates only export-row persistence while retaining validation, workbook rendering, and audit behavior.
+- `backend/app/main.py` — wires the existing dashboard service to its simplified constructor without changing routes.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused XLSX-export regression: `python -m compileall -q app/main.py services/dashboard_service.py repositories/dashboard_repository.py routers/dashboard.py test_main.py && python -m unittest test_main.CalendarApiTests.test_excel_export_matches_authorized_filtered_scope_and_is_spreadsheet_safe -v && python - <<'PY' ...AST-scoped export query-absence/repository-operation and SQL-free-router assertions... PY && git diff --check` (from `backend`): **PASS** — 1 test in **2.544s**; compilation, repository-boundary, route-contract, and whitespace checks passed. It covers authorized filtered scope, private response headers, spreadsheet formula escaping, member filter-bypass rejection, date-range validation, and export audit logging.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python - <<'PY' ...AST-scoped export repository-delegation/query-absence plus SQL-free dashboard-router assertions... PY && git diff --check` (from `backend`): **PASS** — all **29 tests** passed in **92.357s**; JavaScript syntax, Python compilation, XLSX repository boundary, SQL-free dashboard router, and whitespace checks passed. This includes the Phase 1 acceptance workflow and rendered XLSX-download regression coverage.
+
+Risk:
+- `NotificationService` and `MasterService` still contain SQL, while `app/main.py` remains above the recommended 50 lines. The Codex PRD condition that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/app/main.py`, `backend/repositories/dashboard_repository.py`, and `backend/services/dashboard_service.py`. The changed-path sensitive-file scan must include this progress file before commit; database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, and secret files must remain excluded.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving NotificationService slice: move local notification-preference persistence into a repository, then run focused notification authorization coverage and the full regression suite.

@@ -19,14 +19,12 @@ class DashboardService:
     def __init__(
         self,
         db: Callable[[], ContextManager[Any]],
-        task_query_sql: Callable[[Any], tuple[str, list]],
         task_view: Callable[[Any, Any], dict],
         task_export_workbook: Callable[[Any, list, Any], bytes],
         audit: Callable[..., None],
         repository: DashboardRepository,
     ) -> None:
         self._db = db
-        self._task_query_sql = task_query_sql
         self._task_view = task_view
         self._task_export_workbook = task_export_workbook
         self._audit = audit
@@ -115,33 +113,18 @@ class DashboardService:
         if user["role"] != "ADMIN" and assignee_id is not None and assignee_id != user["id"]:
             raise HTTPException(status_code=403, detail="일반 이용자의 처리자 필터는 본인으로 고정됩니다.")
         with self._db() as connection:
-            sql, params = self._task_query_sql(user)
-            if status:
-                sql += " AND t.status=?"
-                params.append(status)
-            if received_from:
-                sql += " AND t.received_date>=?"
-                params.append(str(received_from))
-            if received_to:
-                sql += " AND t.received_date<=?"
-                params.append(str(received_to))
-            if due_from:
-                sql += " AND t.due_date>=?"
-                params.append(str(due_from))
-            if due_to:
-                sql += " AND t.due_date<=?"
-                params.append(str(due_to))
             keyword = (q or "").strip()
-            if keyword:
-                sql += " AND (t.description LIKE ? OR EXISTS(SELECT 1 FROM request_contacts rc JOIN organizations o ON o.id=rc.organization_id WHERE rc.id=t.requester_contact_id AND (rc.name LIKE ? OR o.name LIKE ?)))"
-                params += [f"%{keyword}%"] * 3
-            if assignee_id is not None:
-                sql += " AND EXISTS(SELECT 1 FROM task_assignees ta_filter WHERE ta_filter.task_id=t.id AND ta_filter.user_id=?)"
-                params.append(assignee_id)
-            rows = list(connection.execute(
-                sql + " ORDER BY CASE t.status WHEN 'RECEIVED' THEN 1 WHEN 'IN_PROGRESS' THEN 2 ELSE 3 END,t.received_date DESC,t.id DESC LIMIT 10001",
-                params,
-            ))
+            rows = self._repository.export_task_rows(
+                connection,
+                user,
+                status,
+                keyword,
+                received_from,
+                received_to,
+                due_from,
+                due_to,
+                assignee_id,
+            )
             if len(rows) > 10_000:
                 raise HTTPException(status_code=422, detail="엑셀 내보내기는 한 번에 최대 10,000건까지 가능합니다. 필터를 좁혀 다시 시도하세요.")
             document = self._task_export_workbook(connection, rows, user)
