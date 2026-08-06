@@ -17,6 +17,7 @@ def create_router(
     service: MasterService,
     current_user: Callable[..., Any],
     password_changed_user: Callable[[Any], Any],
+    admin_required: Callable[..., Any],
 ) -> APIRouter:
     """Build legacy master-data routes without placing SQL in the HTTP layer."""
     router = APIRouter()
@@ -54,5 +55,9 @@ def create_router(
             password_changed_user(user),
             request.client.host if request.client else None,
         )
+
+    @router.get("/api/admin/organizations")
+    def admin_organizations(q: str = "", _: Any = Depends(admin_required)):
+        return service.admin_organizations(q)
 
     return router

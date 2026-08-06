@@ -642,14 +642,6 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
     return output.getvalue()
 
 
-@app.get("/api/admin/organizations")
-def admin_organizations(q: str="", _: sqlite3.Row=Depends(admin_required)):
-    with db() as c:
-        return [organization_view(row) for row in c.execute(
-            "SELECT * FROM organizations WHERE name LIKE ? ORDER BY is_active DESC,name LIMIT 100", (f"%{q.strip()}%",)
-        )]
-
-
 @app.patch("/api/admin/organizations/{organization_id}")
 def patch_organization(organization_id: int, payload: OrganizationPatch, request: Request, user: sqlite3.Row=Depends(admin_required)):
     with db() as c:
@@ -789,5 +781,6 @@ app.include_router(
         master_service,
         current_user,
         password_changed_user,
+        admin_required,
     )
 )

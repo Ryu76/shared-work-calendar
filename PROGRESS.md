@@ -870,3 +870,28 @@ Risk:
 
 Next Phase:
 - Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice behind an SQL-free router/service boundary, then run focused coverage and the full regression suite.
+
+## Codex Execution PRD — admin organization-list router/service slice (2026-08-06 15:44:42 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: the remaining admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `GET /api/admin/organizations` endpoint into the existing SQL-free `backend/routers/master.py` boundary and delegated the existing administrator organization-management lookup/projection to `MasterService.admin_organizations`.
+- Preserved the administrator dependency (including forced-password-change enforcement); whitespace-trimmed `q` filtering; active-first/name ordering; 100-row limit; organization response projection; and the existing API URL/request-response schema. Database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/static verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one `GET /api/admin/organizations` route. `backend/routers/master.py` contains no SQL operation or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved administrator organization-list endpoint and supplies the existing administrator dependency to the master router.
+- `backend/routers/master.py` — adds the unchanged administrator organization-list HTTP boundary.
+- `backend/services/master_service.py` — adds the extracted organization-management list operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused master regression: `python -m unittest test_main.CalendarApiTests.test_request_master_management_authorization_lifecycle_and_audit -v` (from `backend`): **PASS** — 1 test in **2.296s**. It covers member rejection and the administrator organization-list query together with the existing master lifecycle/audit flow.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/master.py services/master_service.py main.py && python -c "...route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/master.py && git diff --check` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, exactly one administrator organization-list route, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/master.py && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **93.942s**; JavaScript syntax, Python compilation, unchanged 44-route contract, SQL-free router check, and whitespace checks passed.
+
+Risk:
+- `TaskService`, `DashboardService`, `UserService`, `AuthService`, `NotificationService`, and `MasterService` still contain repository SQL as intentional intermediate service boundaries. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the three verified non-sensitive source files. A tracked sensitive-path scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the master/admin group with the smallest remaining behavior-preserving endpoint slice (`GET /api/admin/request-contacts`) behind the existing SQL-free router/service boundary, then run focused coverage and the full regression suite.

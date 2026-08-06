@@ -135,3 +135,13 @@ class MasterService:
                 "SELECT * FROM request_contacts WHERE id=?", (contact_id,)
             ).fetchone()
             return self._contact_view(connection, contact)
+
+    def admin_organizations(self, query: str) -> list[dict]:
+        """Return the existing administrator organization-management list."""
+        with self._db() as connection:
+            rows = connection.execute(
+                "SELECT * FROM organizations WHERE name LIKE ? "
+                "ORDER BY is_active DESC,name LIMIT 100",
+                (f"%{query.strip()}%",),
+            )
+            return [self._organization_view(row) for row in rows]
