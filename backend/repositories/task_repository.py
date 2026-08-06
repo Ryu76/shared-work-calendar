@@ -315,3 +315,15 @@ class TaskRepository:
     def delete_task_attachment(connection: Any, attachment_id: int) -> None:
         """Delete one task-attachment metadata row after service authorization."""
         connection.execute("DELETE FROM task_attachments WHERE id=?", (attachment_id,))
+
+    @staticmethod
+    def task_history_rows(connection: Any, task_id: int) -> list[Any]:
+        """Return persisted audit rows for one task in the legacy display order."""
+        return list(
+            connection.execute(
+                "SELECT a.id,a.action,a.before_data,a.after_data,a.created_at,u.name actor_name "
+                "FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id "
+                "WHERE a.target_type='TASK' AND a.target_id=? ORDER BY a.id DESC",
+                (str(task_id),),
+            )
+        )

@@ -1503,3 +1503,24 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move authorized task-history persistence into `TaskRepository`, then run focused task-history authorization coverage and the full regression suite.
+
+## Codex Execution PRD — task-history repository persistence slice (2026-08-06 22:56:04 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before this slice. Completion conditions remain unmet: Dashboard, Notification, and Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the persistence-only `TaskRepository.task_history_rows` operation and moved only the task audit-history query from `app.main.task_history` into it. JSON parsing, field-change labeling, returned rows/order, and every existing HTTP route/schema remain unchanged.
+- Preserved task-detail authorization, audit-history rendering, SQLCipher transaction behavior, database schema/data, uploads, DPAPI/key material, credentials, `.env`, notifications, deployment, and external-service behavior. No database or private-upload file was changed.
+
+Modified Files:
+- `backend/repositories/task_repository.py` — adds the legacy-ordered task audit-history persistence query.
+- `backend/app/main.py` — delegates only task-history persistence to `TaskRepository`.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Full verification from the repository root: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/app/main.py backend/services/task_service.py backend/repositories/task_repository.py backend/routers/tasks.py backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && python -c "...AST-scoped task-history query-absence and repository-operation assertions..." && git diff --check`: **PASS** — all **29 tests** passed in **95.845s**; JavaScript syntax, Python compilation, task-history repository boundary, and whitespace checks passed. This includes task-detail/history/deletion authorization coverage plus isolated rendered Chromium task-detail coverage.
+
+Risk:
+- `DashboardService`, `NotificationService`, and `MasterService` still contain SQL. The Codex PRD condition that SQL reside only in repositories remains unfulfilled; `app/main.py` also remains above the recommended 50 lines.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/app/main.py` and `backend/repositories/task_repository.py`. The changed-path scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving SQL slice in `TaskService`, then run focused coverage and the full regression suite.

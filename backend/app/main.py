@@ -575,11 +575,7 @@ def task_changes(before: dict, after: dict) -> list[str]:
 
 def task_history(c: sqlite3.Connection, task_id: int) -> list[dict]:
     import json
-    rows = c.execute(
-        "SELECT a.id,a.action,a.before_data,a.after_data,a.created_at,u.name actor_name "
-        "FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id "
-        "WHERE a.target_type='TASK' AND a.target_id=? ORDER BY a.id DESC", (str(task_id),)
-    )
+    rows = TASK_REPOSITORY.task_history_rows(c, task_id)
     history = []
     for row in rows:
         item = dict(row)
