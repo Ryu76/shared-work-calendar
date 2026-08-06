@@ -32,7 +32,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from core.logging import configure_logging
     from database import DB_PATH, connect, sqlite3
     from schemas.requests import (
-        ContactIn, ContactPatch,
+        ContactPatch,
         OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from routers.auth import create_router as create_auth_router
@@ -52,7 +52,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.core.logging import configure_logging
     from backend.database import DB_PATH, connect, sqlite3
     from backend.schemas.requests import (
-        ContactIn, ContactPatch,
+        ContactPatch,
         OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from backend.routers.auth import create_router as create_auth_router
@@ -413,28 +413,7 @@ def contact_view(c: sqlite3.Connection, row: sqlite3.Row) -> dict:
     return out
 
 
-def contact_from_input(c: sqlite3.Connection, payload: ContactIn, actor_id: int | None = None, ip: str | None = None) -> int:
-    """Find or create reusable master records, recording only actual master changes."""
-    org = c.execute("SELECT * FROM organizations WHERE name=?", (payload.organization,)).fetchone()
-    if not org:
-        timestamp = now()
-        cur = c.execute("INSERT INTO organizations(name,is_active,created_at,updated_at) VALUES(?,1,?,?)", (payload.organization, timestamp, timestamp))
-        org_id = cur.lastrowid
-        audit(c, actor_id, "ORGANIZATION_CREATED", "ORGANIZATION", org_id,
-              after={"name": payload.organization, "is_active": True}, ip=ip)
-    else:
-        org_id = org["id"]
-    contact = c.execute("SELECT * FROM request_contacts WHERE name=? AND phone=? AND organization_id=?", (payload.name, payload.phone, org_id)).fetchone()
-    if contact:
-        return contact["id"]
-    timestamp = now()
-    contact_id = c.execute(
-        "INSERT INTO request_contacts(name,phone,organization_id,is_active,created_at,updated_at) VALUES(?,?,?,1,?,?)",
-        (payload.name, payload.phone, org_id, timestamp, timestamp),
-    ).lastrowid
-    audit(c, actor_id, "REQUEST_CONTACT_CREATED", "REQUEST_CONTACT", contact_id,
-          after={"name": payload.name, "phone": payload.phone, "organization_id": org_id, "is_active": True}, ip=ip)
-    return contact_id
+master_service = MasterService(db, organization_view, contact_view, now, audit)
 
 def image_view(row: sqlite3.Row) -> dict:
     """Metadata deliberately excludes the private storage key."""
@@ -663,14 +642,6 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
     return output.getvalue()
 
 
-@app.post("/api/request-contacts", status_code=201)
-def create_contact(payload: ContactIn, request: Request, user: sqlite3.Row=Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c:
-        contact_id = contact_from_input(c, payload, user["id"], request.client.host if request.client else None)
-        return contact_view(c, c.execute("SELECT * FROM request_contacts WHERE id=?", (contact_id,)).fetchone())
-
-
 @app.get("/api/admin/organizations")
 def admin_organizations(q: str="", _: sqlite3.Row=Depends(admin_required)):
     with db() as c:
@@ -787,7 +758,7 @@ app.include_router(
             task_query_sql,
             task_view,
             accessible_task,
-            contact_from_input,
+            master_service.contact_from_input,
             lambda: today_in_seoul(),
             lambda: now(),
             audit,
@@ -815,7 +786,7 @@ app.include_router(
 )
 app.include_router(
     create_master_router(
-        MasterService(db, organization_view, contact_view, now, audit),
+        master_service,
         current_user,
         password_changed_user,
     )

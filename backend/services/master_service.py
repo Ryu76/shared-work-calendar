@@ -68,3 +68,70 @@ class MasterService:
                 (f"%{query.strip()}%", f"%{query.strip()}%"),
             )
             return [self._contact_view(connection, row) for row in rows]
+
+    def contact_from_input(
+        self,
+        connection: Any,
+        payload: Any,
+        actor_id: int | None = None,
+        ip_address: str | None = None,
+    ) -> int:
+        """Find or create reusable master records with the legacy audit behavior."""
+        organization = connection.execute(
+            "SELECT * FROM organizations WHERE name=?", (payload.organization,)
+        ).fetchone()
+        if not organization:
+            timestamp = self._now()
+            organization_id = connection.execute(
+                "INSERT INTO organizations(name,is_active,created_at,updated_at) VALUES(?,1,?,?)",
+                (payload.organization, timestamp, timestamp),
+            ).lastrowid
+            self._audit(
+                connection,
+                actor_id,
+                "ORGANIZATION_CREATED",
+                "ORGANIZATION",
+                organization_id,
+                after={"name": payload.organization, "is_active": True},
+                ip=ip_address,
+            )
+        else:
+            organization_id = organization["id"]
+        contact = connection.execute(
+            "SELECT * FROM request_contacts WHERE name=? AND phone=? AND organization_id=?",
+            (payload.name, payload.phone, organization_id),
+        ).fetchone()
+        if contact:
+            return contact["id"]
+        timestamp = self._now()
+        contact_id = connection.execute(
+            "INSERT INTO request_contacts(name,phone,organization_id,is_active,created_at,updated_at) "
+            "VALUES(?,?,?,1,?,?)",
+            (payload.name, payload.phone, organization_id, timestamp, timestamp),
+        ).lastrowid
+        self._audit(
+            connection,
+            actor_id,
+            "REQUEST_CONTACT_CREATED",
+            "REQUEST_CONTACT",
+            contact_id,
+            after={
+                "name": payload.name,
+                "phone": payload.phone,
+                "organization_id": organization_id,
+                "is_active": True,
+            },
+            ip=ip_address,
+        )
+        return contact_id
+
+    def create_contact(self, payload: Any, user: Any, ip_address: str | None) -> dict:
+        """Create or reuse a request contact with the existing response projection."""
+        with self._db() as connection:
+            contact_id = self.contact_from_input(
+                connection, payload, user["id"], ip_address
+            )
+            contact = connection.execute(
+                "SELECT * FROM request_contacts WHERE id=?", (contact_id,)
+            ).fetchone()
+            return self._contact_view(connection, contact)

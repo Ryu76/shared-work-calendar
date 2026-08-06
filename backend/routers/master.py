@@ -6,10 +6,10 @@ from typing import Any, Callable
 from fastapi import APIRouter, Depends, Request, status
 
 try:
-    from schemas.requests import OrganizationIn
+    from schemas.requests import ContactIn, OrganizationIn
     from services.master_service import MasterService
 except ModuleNotFoundError:
-    from backend.schemas.requests import OrganizationIn
+    from backend.schemas.requests import ContactIn, OrganizationIn
     from backend.services.master_service import MasterService
 
 
@@ -42,5 +42,17 @@ def create_router(
     def contacts(q: str = "", user: Any = Depends(current_user)):
         password_changed_user(user)
         return service.contacts(q)
+
+    @router.post("/api/request-contacts", status_code=status.HTTP_201_CREATED)
+    def create_contact(
+        payload: ContactIn,
+        request: Request,
+        user: Any = Depends(current_user),
+    ):
+        return service.create_contact(
+            payload,
+            password_changed_user(user),
+            request.client.host if request.client else None,
+        )
 
     return router
