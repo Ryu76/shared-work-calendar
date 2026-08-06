@@ -1340,3 +1340,28 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move the received-date calendar row retrieval into `TaskRepository`, then run focused calendar visibility coverage and the full regression suite.
+
+## Codex Execution PRD — received-date calendar repository persistence slice (2026-08-06 20:57:04 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: Task image/attachment persistence plus Dashboard/Notification/Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the small persistence-only `TaskRepository.received_date_calendar` operation and moved only the authorized received-date calendar row query from `TaskService.get_received_date_calendar` into it.
+- Preserved `GET /api/calendar` URL/status/request-response schema; existing strict `YYYY-MM` validation; all-status received-date behavior and ordering; server-side administrator/member task visibility; task response projection; SQLCipher behavior; database schema/data; DPAPI/key material; uploads; secrets; `.env`; notification delivery; deployment; and external-service behavior.
+- `TaskService.get_received_date_calendar` delegates row retrieval to `TaskRepository` and contains no `.execute(` call. The application still registers 44 routes with exactly one `GET /api/calendar` and one `GET /api/tasks` route; `routers/tasks.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/task_repository.py` — adds authorized received-date calendar persistence.
+- `backend/services/task_service.py` — delegates only received-date calendar row retrieval through `TaskRepository`.
+- `backend/app/main.py` — removes the no-longer-needed calendar SQL helper dependency from task-service composition without changing routes.
+- `backend/test_main.py` — extends direct API authorization regression coverage to confirm a member cannot enumerate another member's task through the calendar.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused calendar authorization and behavior regression: `python -m unittest test_main.CalendarApiTests.test_member_cannot_see_other_members_task test_main.CalendarApiTests.test_task_list_server_filters_pagination_and_calendar_month_validation -v && python -m compileall -q app/main.py services/task_service.py repositories/task_repository.py routers/tasks.py test_main.py && git diff --check` (from `backend`): **PASS** — 2 tests in **4.086s**; compilation and whitespace validation passed.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python - <<'PY' ...calendar repository-boundary, SQL-free router, and 44-route contract assertions... PY && git diff --check` (from `backend`): **PASS** — all **29 tests** passed in **93.789s**; JavaScript syntax, Python compilation, one-calendar-route/one-task-route contract, extracted-SQL boundary, SQL-free task router, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains task image and attachment SQL; `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/app/main.py`, `backend/repositories/task_repository.py`, `backend/services/task_service.py`, and `backend/test_main.py`. A changed-path sensitive-file scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move task image-count/upload persistence into `TaskRepository`, then run focused image authorization coverage and the full regression suite.

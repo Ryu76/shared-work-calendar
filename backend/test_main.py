@@ -213,6 +213,11 @@ class CalendarApiTests(unittest.TestCase):
         self.assertEqual(hidden_list.status_code, 200, hidden_list.text)
         self.assertEqual(hidden_list.json()["items"], [])
         self.assertEqual(client.get(f"/api/tasks/{task_id}", headers=a).status_code, 403)
+        hidden_calendar = client.get(
+            "/api/calendar?month=" + response.json()["received_date"][:7], headers=a
+        )
+        self.assertEqual(hidden_calendar.status_code, 200, hidden_calendar.text)
+        self.assertNotIn(task_id, [task["id"] for task in hidden_calendar.json()])
         self.assertNotEqual(a_id, b_id)
 
     def test_task_rejects_inactive_assignees_on_create_and_update(self):

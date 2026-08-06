@@ -30,7 +30,6 @@ class TaskService:
     def __init__(
         self,
         db: Callable[[], ContextManager[Any]],
-        task_query_sql: Callable[[Any], tuple[str, list]],
         task_view: Callable[[Any, Any], dict],
         accessible_task: Callable[[Any, int, Any], Any],
         contact_from_input: Callable[..., int],
@@ -56,7 +55,6 @@ class TaskService:
         repository: TaskRepository,
     ) -> None:
         self._db = db
-        self._task_query_sql = task_query_sql
         self._task_view = task_view
         self._accessible_task = accessible_task
         self._contact_from_input = contact_from_input
@@ -607,7 +605,7 @@ class TaskService:
             else date(year, month_number + 1, 1)
         )
         with self._db() as connection:
-            sql, params = self._task_query_sql(user)
-            sql += " AND t.received_date>=? AND t.received_date<? ORDER BY t.received_date"
-            params.extend([str(first_day), str(next_month)])
-            return [self._task_view(connection, row) for row in connection.execute(sql, params)]
+            rows = self._repository.received_date_calendar(
+                connection, user, str(first_day), str(next_month)
+            )
+            return [self._task_view(connection, row) for row in rows]

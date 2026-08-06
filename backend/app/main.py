@@ -682,7 +682,6 @@ app.include_router(
     create_task_router(
         TaskService(
             db,
-            task_query_sql,
             task_view,
             accessible_task,
             master_service.contact_from_input,

@@ -70,6 +70,21 @@ class TaskRepository:
         return total, summary, rows
 
     @staticmethod
+    def received_date_calendar(
+        connection: Any, user: Any, first_day: str, next_month: str
+    ) -> list[Any]:
+        """Return authorized live tasks received within one calendar month."""
+        sql = "SELECT t.* FROM tasks t WHERE t.deleted_at IS NULL"
+        params: list[Any] = []
+        if user["role"] != "ADMIN":
+            sql += " AND (t.created_by=? OR EXISTS(SELECT 1 FROM task_assignees ta WHERE ta.task_id=t.id AND ta.user_id=?))"
+            params.extend([user["id"], user["id"]])
+        return list(connection.execute(
+            sql + " AND t.received_date>=? AND t.received_date<? ORDER BY t.received_date",
+            [*params, first_day, next_month],
+        ))
+
+    @staticmethod
     def create_task(
         connection: Any,
         requester_contact_id: int,
