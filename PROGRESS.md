@@ -1388,3 +1388,26 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move task attachment count/upload persistence into `TaskRepository`, then run focused attachment authorization coverage and the full regression suite.
+
+## Codex Execution PRD — task attachment-upload repository persistence slice (2026-08-06 21:28:21 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: task attachment retrieval/deletion, image retrieval/edit/delete, and history persistence plus Dashboard/Notification/Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the small persistence-only `TaskRepository.attachment_count` and `TaskRepository.create_task_attachment` operations, and moved only the existing task-attachment count plus metadata insert/read persistence from `TaskService.upload_task_attachments` into them.
+- Preserved the `POST /api/tasks/{task_id}/attachments` URL/status/request-response schema; existing task authorization before private-byte inspection; document/video MIME/signature and size validation; ten-attachment limits and database trigger behavior; private file creation/cleanup/modes; attachment response projection; SHA-256 metadata; audit behavior; transaction/rollback behavior; SQLCipher behavior; database schema/data; DPAPI/key material; uploads; secrets; `.env`; notification delivery; deployment; and external-service behavior.
+- `TaskService.upload_task_attachments` delegates attachment count and metadata persistence to `TaskRepository`; its scoped upload operation no longer contains the extracted `SELECT COUNT(*) FROM task_attachments`, attachment `INSERT`, or created-attachment `SELECT` SQL. `routers/tasks.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/task_repository.py` — adds task-attachment count and metadata create/read persistence.
+- `backend/services/task_service.py` — delegates only task-attachment upload persistence through `TaskRepository` while retaining validation, private-file lifecycle, authorization, SHA-256 calculation, audit, and transaction behavior.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused attachment authorization/upload regression: `python -m unittest test_main.CalendarApiTests.test_private_document_video_attachment_validation_authorization_and_deletion -v && python -m compileall -q app/main.py services/task_service.py repositories/task_repository.py routers/tasks.py test_main.py && python - <<'PY' ...AST-scoped attachment-upload repository delegation/query-absence and 44-route attachment contract assertions... PY && git diff --check` (from `backend`): **PASS** — 1 test in **2.899s**. It covers unauthorized upload/download/deletion rejection, MIME/signature validation, private download headers, uploaded attachment detail/history/audit behavior, and deletion.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python - <<'PY' ...attachment repository boundary, SQL-free task router, and 44-route contract assertions... PY && git diff --check` (from `backend`): **PASS** — all **29 tests** passed in **95.659s**; JavaScript syntax, Python compilation, attachment repository boundary, SQL-free task router, route contract, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains task attachment retrieval/deletion, image retrieval/edit/delete, and history SQL; `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/repositories/task_repository.py` and `backend/services/task_service.py`. The changed-path sensitive-file scan must include this progress file before commit; database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, and secret files must remain excluded.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving TaskService slice: move authorized task-attachment retrieval/deletion persistence into `TaskRepository`, then run focused attachment authorization coverage and the full regression suite.

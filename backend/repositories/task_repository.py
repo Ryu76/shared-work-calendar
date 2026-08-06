@@ -213,3 +213,42 @@ class TaskRepository:
             ),
         ).lastrowid
         return connection.execute("SELECT * FROM task_images WHERE id=?", (image_id,)).fetchone()
+
+    @staticmethod
+    def attachment_count(connection: Any, task_id: int) -> int:
+        """Return the current number of document/video attachments on one task."""
+        return connection.execute(
+            "SELECT COUNT(*) FROM task_attachments WHERE task_id=?", (task_id,)
+        ).fetchone()[0]
+
+    @staticmethod
+    def create_task_attachment(
+        connection: Any,
+        task_id: int,
+        storage_key: str,
+        original_filename: str,
+        mime_type: str,
+        attachment_type: str,
+        size_bytes: int,
+        sha256: str,
+        uploaded_by: int,
+        created_at: str,
+    ) -> Any:
+        """Persist and return one task-attachment metadata row."""
+        attachment_id = connection.execute(
+            "INSERT INTO task_attachments(task_id,storage_key,original_filename,mime_type,attachment_type,size_bytes,sha256,uploaded_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                task_id,
+                storage_key,
+                original_filename,
+                mime_type,
+                attachment_type,
+                size_bytes,
+                sha256,
+                uploaded_by,
+                created_at,
+            ),
+        ).lastrowid
+        return connection.execute(
+            "SELECT * FROM task_attachments WHERE id=?", (attachment_id,)
+        ).fetchone()

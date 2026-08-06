@@ -369,9 +369,7 @@ class TaskService:
                 prepared.append((upload, content, attachment_type, suffix, mime_type))
             with self._db() as connection:
                 self._accessible_task(connection, task_id, user)
-                existing_count = connection.execute(
-                    "SELECT COUNT(*) FROM task_attachments WHERE task_id=?", (task_id,)
-                ).fetchone()[0]
+                existing_count = self._repository.attachment_count(connection, task_id)
                 if existing_count + len(prepared) > self._max_attachment_count:
                     raise HTTPException(status_code=422, detail="업무당 문서/동영상 첨부는 최대 10개입니다.")
                 self._upload_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -387,16 +385,18 @@ class TaskService:
                         pass
                     created_paths.append(destination)
                     filename = Path(upload.filename or f"attachment{suffix}").name[-255:] or f"attachment{suffix}"
-                    attachment_id = connection.execute(
-                        "INSERT INTO task_attachments(task_id,storage_key,original_filename,mime_type,attachment_type,size_bytes,sha256,uploaded_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                        (
-                            task_id, storage_key, filename, mime_type, attachment_type, len(content),
-                            hashlib.sha256(content).hexdigest(), user["id"], self._now(),
-                        ),
-                    ).lastrowid
-                    row = connection.execute(
-                        "SELECT * FROM task_attachments WHERE id=?", (attachment_id,)
-                    ).fetchone()
+                    row = self._repository.create_task_attachment(
+                        connection,
+                        task_id,
+                        storage_key,
+                        filename,
+                        mime_type,
+                        attachment_type,
+                        len(content),
+                        hashlib.sha256(content).hexdigest(),
+                        user["id"],
+                        self._now(),
+                    )
                     uploaded.append(self._attachment_view(row))
                 self._audit(
                     connection, user["id"], "TASK_ATTACHMENT_UPLOADED", "TASK", task_id,
