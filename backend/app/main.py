@@ -1022,28 +1022,6 @@ def edit_task_image(
         raise
 
 
-@app.delete("/api/tasks/{task_id}/images/{image_id}")
-def delete_task_image(task_id: int, image_id: int, request: Request, user: sqlite3.Row = Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c:
-        accessible_task(c, task_id, user)
-        image = c.execute("SELECT * FROM task_images WHERE id=? AND task_id=?", (image_id, task_id)).fetchone()
-        if not image:
-            raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
-        result = image_view(image)
-        paths = {private_image_path(image["storage_key"])}
-        paths.update(
-            private_image_path(row["source_storage_key"])
-            for row in c.execute("SELECT source_storage_key FROM task_image_edits WHERE image_id=?", (image_id,))
-        )
-        c.execute("DELETE FROM task_images WHERE id=?", (image_id,))
-        audit(c, user["id"], "TASK_IMAGE_DELETED", "TASK", task_id, before={"image": result},
-              ip=request.client.host if request.client else None)
-    for path in paths:
-        path.unlink(missing_ok=True)
-    return {"ok": True}
-
-
 @app.post("/api/tasks/{task_id}/attachments", status_code=201)
 async def upload_task_attachments(
     task_id: int, request: Request, attachments: list[UploadFile] = File(...), user: sqlite3.Row = Depends(current_user)
@@ -1322,6 +1300,7 @@ app.include_router(
             task_changes,
             task_history,
             private_image_path,
+            image_view,
         ),
         current_user,
         password_changed_user,

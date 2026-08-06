@@ -30,6 +30,7 @@ class TaskService:
         task_changes: Callable[[dict, dict], list[str]],
         task_history: Callable[[Any, int], list[dict]],
         private_image_path: Callable[[str], Any],
+        image_view: Callable[[Any], dict],
     ) -> None:
         self._db = db
         self._task_query_sql = task_query_sql
@@ -42,6 +43,7 @@ class TaskService:
         self._task_changes = task_changes
         self._task_history = task_history
         self._private_image_path = private_image_path
+        self._image_view = image_view
 
     def create_task(self, payload: Any, user: Any, ip_address: str | None) -> dict:
         """Create a task with the unchanged validation, audit, and response view."""
@@ -315,6 +317,39 @@ class TaskService:
                 media_type=image["mime_type"],
                 headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
             )
+
+    def delete_task_image(
+        self, task_id: int, image_id: int, user: Any, ip_address: str | None
+    ) -> dict:
+        """Delete one authorized image and its retained private source revision."""
+        with self._db() as connection:
+            self._accessible_task(connection, task_id, user)
+            image = connection.execute(
+                "SELECT * FROM task_images WHERE id=? AND task_id=?", (image_id, task_id)
+            ).fetchone()
+            if not image:
+                raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
+            result = self._image_view(image)
+            paths = {self._private_image_path(image["storage_key"])}
+            paths.update(
+                self._private_image_path(row["source_storage_key"])
+                for row in connection.execute(
+                    "SELECT source_storage_key FROM task_image_edits WHERE image_id=?", (image_id,)
+                )
+            )
+            connection.execute("DELETE FROM task_images WHERE id=?", (image_id,))
+            self._audit(
+                connection,
+                user["id"],
+                "TASK_IMAGE_DELETED",
+                "TASK",
+                task_id,
+                before={"image": result},
+                ip=ip_address,
+            )
+        for path in paths:
+            path.unlink(missing_ok=True)
+        return {"ok": True}
 
     def get_received_date_calendar(self, month: str, user: Any) -> list[dict]:
         """Return all authorized live tasks received during a validated month."""

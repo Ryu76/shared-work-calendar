@@ -99,6 +99,20 @@ def create_router(
     def serve_task_image(task_id: int, image_id: int, user: Any = Depends(current_user)):
         return service.get_task_image(task_id, image_id, password_changed_user(user))
 
+    @router.delete("/api/tasks/{task_id}/images/{image_id}")
+    def delete_task_image(
+        task_id: int,
+        image_id: int,
+        request: Request,
+        user: Any = Depends(current_user),
+    ):
+        return service.delete_task_image(
+            task_id,
+            image_id,
+            password_changed_user(user),
+            request.client.host if request.client else None,
+        )
+
     @router.get("/api/calendar")
     def calendar(month: str, user: Any = Depends(current_user)):
         return service.get_received_date_calendar(month, password_changed_user(user))

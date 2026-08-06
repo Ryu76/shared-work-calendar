@@ -518,3 +518,28 @@ Risk:
 
 Next Phase:
 - Continue the task group with the smallest remaining behavior-preserving file-endpoint slice (image edit or delete) behind the existing SQL-free router/service boundary, then run focused task coverage and the full regression suite.
+
+## Codex Execution PRD — task image-delete router/service slice (2026-08-06 11:29:54 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: remaining task file endpoints, Dashboard/Admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `DELETE /api/tasks/{task_id}/images/{image_id}` private-image deletion endpoint into the existing SQL-free `backend/routers/tasks.py` boundary and delegated it to `TaskService.delete_task_image`.
+- Preserved first-password-change enforcement, task-level authorization, image/task matching, the established Korean 404 message, private source-revision cleanup after a committed deletion, image metadata redaction in the audit event, client IP handling, and the `{\"ok\": true}` response schema. API URLs, request/response schemas, database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/import verification confirms `Shared Work Calendar MVP` still has **44** routes and registers exactly one `DELETE /api/tasks/{task_id}/images/{image_id}` route. The task router contains no `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved private-image deletion endpoint body and supplies the existing image metadata helper to `TaskService`.
+- `backend/routers/tasks.py` — adds the unchanged DELETE image HTTP endpoint with existing dependency behavior.
+- `backend/services/task_service.py` — adds the injected authorized image-deletion operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused image regression: `python -m unittest test_main.CalendarApiTests.test_private_image_upload_validation_authorization_and_deletion test_main.CalendarApiTests.test_private_image_rotation_is_authorized_non_destructive_and_audited test_acceptance.PhaseOneAcceptanceTests.test_phase_one_task_authorization_status_images_calendar_and_audit_acceptance -v` (from `backend`): **PASS** — 3 tests in **9.964s**. This covers deletion authorization, 404 after deletion, image-upload/deletion audit events, and deletion of both current and retained source-revision files.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/tasks.py services/task_service.py main.py && python -c "...route assertion..." && ! grep -nE 'SELECT|INSERT|UPDATE|DELETE|\\.execute\\(' routers/tasks.py && git diff --check` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, exactly one image-delete route, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: **PASS** — all **27 tests** passed in **94.785s**; JavaScript syntax, Python compilation, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains repository SQL as an intentional intermediate service boundary. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- `git status --short --untracked-files=all` listed only the three verified source files before this progress update. No database, DPAPI/key file, plaintext backup, private upload, secret, or `.env` is included.
+
+Next Phase:
+- Continue the task group with the smallest remaining behavior-preserving file-endpoint slice (image edit) behind the existing SQL-free router/service boundary, then run focused task coverage and the full regression suite.
