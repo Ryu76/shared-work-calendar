@@ -6,10 +6,10 @@ from typing import Any, Callable, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, status
 try:
-    from schemas.requests import TaskIn
+    from schemas.requests import TaskIn, TaskUpdateIn
     from services.task_service import TaskService
 except ModuleNotFoundError:
-    from backend.schemas.requests import TaskIn
+    from backend.schemas.requests import TaskIn, TaskUpdateIn
     from backend.services.task_service import TaskService
 
 
@@ -63,5 +63,19 @@ def create_router(
     @router.get("/api/tasks/{task_id}")
     def get_task(task_id: int, user: Any = Depends(current_user)):
         return service.get_task(task_id, password_changed_user(user))
+
+    @router.patch("/api/tasks/{task_id}")
+    def patch_task(
+        task_id: int,
+        payload: TaskUpdateIn,
+        request: Request,
+        user: Any = Depends(current_user),
+    ):
+        return service.update_task(
+            task_id,
+            payload,
+            password_changed_user(user),
+            request.client.host if request.client else None,
+        )
 
     return router

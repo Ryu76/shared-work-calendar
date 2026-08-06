@@ -1169,75 +1169,6 @@ def get_task_history(task_id: int, user: sqlite3.Row=Depends(current_user)):
         return task_history(c, task_id)
 
 
-@app.patch("/api/tasks/{task_id}")
-def patch_task(task_id: int, payload: TaskUpdateIn, request: Request, user: sqlite3.Row=Depends(current_user)):
-    user = password_changed_user(user)
-    with db() as c:
-        old = accessible_task(c, task_id, user)
-        before = task_view(c, old)
-        assignee_ids = payload.assignee_ids if payload.assignee_ids is not None else [a["id"] for a in before["assignees"]]
-        active = {r["id"] for r in c.execute("SELECT id FROM users WHERE is_active=1")}
-        if not set(assignee_ids).issubset(active):
-            raise HTTPException(status_code=422, detail="비활성 또는 존재하지 않는 처리자가 포함되어 있습니다.")
-        next_status = payload.status or old["status"]
-        stored_received = date.fromisoformat(old["received_date"])
-        # Members participating in a task may edit it, but the received date is a
-        # creator-owned field for members (PRD 5.1).  Enforce this on the API rather
-        # than relying on the detail form, which every authorized participant can
-        # submit directly.
-        if (
-            payload.received_date is not None
-            and payload.received_date != stored_received
-            and user["role"] != "ADMIN"
-            and old["created_by"] != user["id"]
-        ):
-            raise HTTPException(status_code=403, detail="접수일은 업무 생성자 또는 관리자만 수정할 수 있습니다.")
-        received = payload.received_date or stored_received
-        if "due_date" in payload.model_fields_set:
-            due = payload.due_date
-        else:
-            due = date.fromisoformat(old["due_date"]) if old["due_date"] else None
-        if due is not None and due < received:
-            raise HTTPException(status_code=422, detail="마감일은 접수일보다 빠를 수 없습니다.")
-        if next_status != "COMPLETED":
-            completed = None
-        elif payload.completed_date is not None:
-            completed = payload.completed_date
-        elif old["status"] == "COMPLETED" and old["completed_date"]:
-            completed = date.fromisoformat(old["completed_date"])
-        else:
-            completed = today_in_seoul()
-        contact_id = contact_from_input(c, payload.contact, user["id"], request.client.host if request.client else None) if payload.contact else old["requester_contact_id"]
-        description = payload.description if payload.description is not None else old["description"]
-        c.execute(
-            "UPDATE tasks SET requester_contact_id=?,status=?,description=?,received_date=?,completed_date=?,due_date=?,updated_at=? WHERE id=?",
-            (contact_id, next_status, description, str(received), str(completed) if completed else None, str(due) if due else None, now(), task_id),
-        )
-        # Never leave a stale local reminder after changing notification-visible task
-        # data. A description is embedded in the safe in-app message, so it needs the
-        # same invalidation as due date/status/assignee changes. Fresh eligible
-        # reminders are recreated only in each recipient's private local outbox on
-        # their next notification read; no external delivery is attempted.
-        notification_needs_refresh = (
-            old["due_date"] != (str(due) if due else None)
-            or old["status"] != next_status
-            or old["description"] != description
-            or payload.assignee_ids is not None
-        )
-        if notification_needs_refresh:
-            c.execute("DELETE FROM notification_outbox WHERE task_id=?", (task_id,))
-        if payload.assignee_ids is not None:
-            c.execute("DELETE FROM task_assignees WHERE task_id=?", (task_id,))
-            for assignee_id in assignee_ids:
-                c.execute("INSERT INTO task_assignees(task_id,user_id,assigned_at) VALUES(?,?,?)", (task_id, assignee_id, now()))
-        updated = c.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
-        after = task_view(c, updated)
-        changes = task_changes(before, after)
-        if changes:
-            audit(c, user["id"], "TASK_UPDATED", "TASK", task_id, before, after, request.client.host if request.client else None)
-        return after
-
-
 @app.delete("/api/tasks/{task_id}")
 def delete_task(task_id: int, request: Request, user: sqlite3.Row=Depends(admin_required)):
     with db() as c:
@@ -1433,6 +1364,7 @@ app.include_router(
             lambda: today_in_seoul(),
             lambda: now(),
             audit,
+            task_changes,
         ),
         current_user,
         password_changed_user,

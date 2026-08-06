@@ -393,3 +393,28 @@ Risk:
 
 Next Phase:
 - Continue the task group with one small behavior-preserving write/history/calendar or attachment slice behind the existing SQL-free router/service boundary, then run focused task coverage and the full regression suite.
+
+## Codex Execution PRD — task update router/service slice (2026-08-06 10:07:45 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: task upload/history/calendar endpoints, Dashboard/Admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `PATCH /api/tasks/{task_id}` endpoint into the existing SQL-free `backend/routers/tasks.py` boundary and delegated its operation to `TaskService.update_task`.
+- Preserved task-level access scope; member creator-only received-date protection; due/completed-date behavior; active-assignee validation; reusable-contact handling; transactions; notification-outbox invalidation; task view; audit payload/event; error status/text; and request client IP handling. API URLs, request/response schemas, database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/import verification confirms `Shared Work Calendar MVP` still has 44 routes and registers exactly one extracted PATCH task route. The task router contains no `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved task-update endpoint body and supplies the existing task-change helper to `TaskService`.
+- `backend/routers/tasks.py` — adds the existing PATCH task HTTP endpoint with unchanged dependency behavior.
+- `backend/services/task_service.py` — adds the injected task-update business operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused regression: `python -m unittest test_main.CalendarApiTests.test_task_detail_update_history_and_deletion_authorization test_main.CalendarApiTests.test_due_dates_local_notification_outbox_preferences_and_authorization test_acceptance.PhaseOneAcceptanceTests.test_phase_one_task_authorization_status_images_calendar_and_audit_acceptance -v` (from `backend`): **PASS** — 3 tests in **11.049s**.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/tasks.py services/task_service.py main.py && python -c "...route assertions..." && git diff --check` (from `backend`): **PASS** — unchanged title/44-route contract and PATCH route registration confirmed. A separate router source token check also passed with no SQL/DB execution token.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && git diff --check`: **PASS** — all **27 tests** passed in **91.856s**; JavaScript syntax, Python compilation, and whitespace checks passed.
+
+Risk:
+- `TaskService` still contains repository SQL as an intentional intermediate service boundary. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Only the verified source/progress files named above will be committed. `backend/calendar.db` and detected plaintext DB backups are ignored and will not be added; no DPAPI/key file, private upload, secret, or `.env` is included.
+
+Next Phase:
+- Continue the task group with the smallest remaining behavior-preserving endpoint slice (delete, history/calendar, or one attachment operation) behind the existing SQL-free router/service boundary, then run focused task coverage and the full regression suite.
