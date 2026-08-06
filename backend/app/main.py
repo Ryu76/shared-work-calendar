@@ -37,9 +37,11 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
         OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from routers.auth import create_router as create_auth_router
+    from routers.dashboard import create_router as create_dashboard_router
     from routers.tasks import create_router as create_task_router
     from routers.users import create_router as create_users_router
     from services.auth_service import AuthService
+    from services.dashboard_service import DashboardService
     from services.task_service import TaskService
     from services.user_service import UserService
 except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository root.
@@ -51,9 +53,11 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
         OrganizationIn, OrganizationPatch, TaskIn, TaskUpdateIn,
     )
     from backend.routers.auth import create_router as create_auth_router
+    from backend.routers.dashboard import create_router as create_dashboard_router
     from backend.routers.tasks import create_router as create_task_router
     from backend.routers.users import create_router as create_users_router
     from backend.services.auth_service import AuthService
+    from backend.services.dashboard_service import DashboardService
     from backend.services.task_service import TaskService
     from backend.services.user_service import UserService
 
@@ -775,83 +779,6 @@ def refresh_due_notifications(c: sqlite3.Connection, user: sqlite3.Row) -> None:
             )
 
 
-def apply_statistics_filters(
-    sql: str,
-    params: list,
-    user: sqlite3.Row,
-    received_from: date | None,
-    received_to: date | None,
-    assignee_id: int | None,
-) -> tuple[str, list, int | None]:
-    """Apply report scope without weakening the existing task visibility policy."""
-    if received_from and received_to and received_from > received_to:
-        raise HTTPException(status_code=422, detail="접수일 시작일은 종료일보다 늦을 수 없습니다.")
-    if user["role"] != "ADMIN" and assignee_id is not None and assignee_id != user["id"]:
-        raise HTTPException(status_code=403, detail="일반 이용자의 처리자 필터는 본인으로 고정됩니다.")
-    if received_from:
-        sql += " AND t.received_date>=?"
-        params.append(str(received_from))
-    if received_to:
-        sql += " AND t.received_date<=?"
-        params.append(str(received_to))
-    if assignee_id is not None:
-        sql += " AND EXISTS(SELECT 1 FROM task_assignees ta_filter WHERE ta_filter.task_id=t.id AND ta_filter.user_id=?)"
-        params.append(assignee_id)
-    # A member may have creator-only tasks in the status aggregate. Their per-user
-    # row remains self-only, so it cannot reveal shared processors' identities.
-    user_scope = assignee_id if assignee_id is not None else (user["id"] if user["role"] != "ADMIN" else None)
-    return sql, params, user_scope
-
-
-@app.get("/api/statistics")
-def statistics(
-    received_from: date | None = None,
-    received_to: date | None = None,
-    assignee_id: int | None = Query(None, gt=0),
-    user: sqlite3.Row = Depends(current_user),
-):
-    """Return status and processor aggregates for only the caller's task scope."""
-    user = password_changed_user(user)
-    with db() as c:
-        sql, params = task_query_sql(user)
-        sql, params, user_scope = apply_statistics_filters(
-            sql, params, user, received_from, received_to, assignee_id
-        )
-        by_status = {name: 0 for name in ("RECEIVED", "IN_PROGRESS", "COMPLETED")}
-        for row in c.execute(f"SELECT visible.status,COUNT(*) count FROM ({sql}) visible GROUP BY visible.status", params):
-            by_status[row["status"]] = row["count"]
-        total = sum(by_status.values())
-
-        user_sql = (
-            "SELECT u.id,u.name,u.login_id,u.is_active,COUNT(*) total,"
-            "SUM(CASE WHEN visible.status='RECEIVED' THEN 1 ELSE 0 END) RECEIVED,"
-            "SUM(CASE WHEN visible.status='IN_PROGRESS' THEN 1 ELSE 0 END) IN_PROGRESS,"
-            "SUM(CASE WHEN visible.status='COMPLETED' THEN 1 ELSE 0 END) COMPLETED "
-            "FROM task_assignees ta JOIN users u ON u.id=ta.user_id "
-            f"JOIN ({sql}) visible ON visible.id=ta.task_id"
-        )
-        user_params = list(params)
-        if user_scope is not None:
-            user_sql += " WHERE ta.user_id=?"
-            user_params.append(user_scope)
-        user_sql += " GROUP BY u.id,u.name,u.login_id,u.is_active ORDER BY total DESC,u.name,u.id"
-        by_user = []
-        for row in c.execute(user_sql, user_params):
-            item = dict(row)
-            item["is_active"] = bool(item["is_active"])
-            item["by_status"] = {name: item.pop(name) for name in ("RECEIVED", "IN_PROGRESS", "COMPLETED")}
-            by_user.append(item)
-        return {
-            "scope": "ALL_TASKS" if user["role"] == "ADMIN" and assignee_id is None else "MY_AUTHORIZED_TASKS",
-            "period": {"received_from": str(received_from) if received_from else None, "received_to": str(received_to) if received_to else None},
-            "assignee_id": assignee_id,
-            "total": total,
-            "by_status": by_status,
-            "by_user": by_user,
-            "user_totals_note": "공동 처리 업무는 각 처리자에게 1건씩 집계됩니다.",
-        }
-
-
 @app.get("/api/tasks/export.xlsx")
 def export_tasks_xlsx(
     request: Request,
@@ -1080,6 +1007,13 @@ def audit_logs(
 
 # Register after the existing static task-export route so its literal path retains
 # precedence over the legacy ``/api/tasks/{task_id}`` parameter route.
+app.include_router(
+    create_dashboard_router(
+        DashboardService(db, task_query_sql),
+        current_user,
+        password_changed_user,
+    )
+)
 app.include_router(
     create_task_router(
         TaskService(

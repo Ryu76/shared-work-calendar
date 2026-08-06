@@ -667,4 +667,29 @@ Risk:
 - Before this progress update, `git status --short --untracked-files=all` listed only the three verified source files. A tracked sensitive-file scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; no sensitive file will be included. `backend/calendar.db` and plaintext DB backups are ignored.
 
 Next Phase:
-- Continue the task group with the smallest remaining behavior-preserving task endpoint slice (completed-date calendar or another remaining task route) behind the existing SQL-free router/service boundary, then run focused coverage and the full regression suite.
+- Continue the dashboard group with the smallest remaining behavior-preserving endpoint slice (completed-date calendar or XLSX export) behind an SQL-free router/service boundary, then run focused dashboard coverage and the full regression suite.
+
+## Codex Execution PRD — dashboard statistics router/service slice (2026-08-06 13:15:27 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: completed-calendar/export/notification/master/admin routes, repository-only SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering are still pending.
+- Extracted the unchanged `GET /api/statistics` dashboard endpoint into the new SQL-free `backend/routers/dashboard.py` boundary and delegated aggregation/filtering to `DashboardService`.
+- Preserved first-password-change enforcement; authenticated date/query validation; existing server-side authorized task scope; member self-only assignee filtering and 403 rejection of other-user filters; status and per-assignee aggregate semantics; response field names/values; and the existing API URL. Database schema/data, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior did not change.
+- Route/import verification confirms `Shared Work Calendar MVP` still registers **44** routes and exactly one `GET /api/statistics` route. `backend/routers/dashboard.py` contains no SQL operation or `.execute(` token.
+
+Modified Files:
+- `backend/app/main.py` — removes only the moved statistics endpoint and wires the dashboard router/service.
+- `backend/routers/dashboard.py` — adds the unchanged statistics HTTP endpoint with existing dependency behavior.
+- `backend/services/dashboard_service.py` — adds the extracted authorized dashboard aggregation operation.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused dashboard regression: `python -m unittest test_main.CalendarApiTests.test_statistics_scope_status_user_aggregation_and_validation -v` (from `backend`): **PASS** — 1 test in **2.359s**. It covers filtered admin aggregates, member-only aggregate visibility, forbidden direct foreign-assignee filtering, and invalid date-range validation.
+- Router contract/static-boundary verification: `python -m compileall -q app/main.py routers/dashboard.py services/dashboard_service.py main.py && python -c "...route and SQL-free router assertions..." && git diff --check` (from `backend`): **PASS** — compilation, unchanged title/44-route contract, exactly one statistics route, SQL-free router check, and whitespace check passed.
+- Full verification: `python -m unittest discover -s backend -p 'test*.py' -v && node --check web/app.js && python -m compileall -q backend/main.py backend/app/main.py backend/routers backend/services backend/schemas backend/database.py backend/core backend/test_main.py backend/test_acceptance.py backend/test_browser_ui.py && python -c "...package import and route assertions..." && git diff --check`: **PASS** — all **27 tests** passed in **95.672s**; JavaScript syntax, Python compilation, package import, unchanged 44-route contract, and whitespace checks passed.
+
+Risk:
+- `TaskService` and `DashboardService` still contain repository SQL as intentional intermediate service boundaries. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before this progress update, `git status --short --untracked-files=all` listed only the three verified source files. A tracked sensitive-file scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the dashboard group with the smallest remaining behavior-preserving endpoint slice (completed-date calendar or XLSX export) behind an SQL-free router/service boundary, then run focused dashboard coverage and the full regression suite.
