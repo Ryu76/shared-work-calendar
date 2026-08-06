@@ -36,6 +36,11 @@ class TaskService:
         image_view: Callable[[Any], dict],
         rotate_private_image: Callable[[bytes, str, str], bytes],
         image_suffixes: Mapping[str, str],
+        upload_dir: Path,
+        max_image_count: int,
+        max_image_bytes: int,
+        validate_image_upload: Callable[[Any, bytes], str],
+        integrity_error: type[Exception],
     ) -> None:
         self._db = db
         self._task_query_sql = task_query_sql
@@ -51,6 +56,11 @@ class TaskService:
         self._image_view = image_view
         self._rotate_private_image = rotate_private_image
         self._image_suffixes = image_suffixes
+        self._upload_dir = upload_dir
+        self._max_image_count = max_image_count
+        self._max_image_bytes = max_image_bytes
+        self._validate_image_upload = validate_image_upload
+        self._integrity_error = integrity_error
 
     def create_task(self, payload: Any, user: Any, ip_address: str | None) -> dict:
         """Create a task with the unchanged validation, audit, and response view."""
@@ -300,6 +310,65 @@ class TaskService:
                 ip_address,
             )
             return {"ok": True}
+
+    async def upload_task_images(
+        self, task_id: int, images: list[Any], user: Any, ip_address: str | None
+    ) -> dict:
+        """Store validated private images with the established authorization and audit behavior."""
+        if not images or len(images) > self._max_image_count:
+            raise HTTPException(status_code=422, detail="한 번에 이미지는 1개 이상 5개 이하만 업로드할 수 있습니다.")
+        prepared: list[tuple[Any, bytes, str]] = []
+        try:
+            for upload in images:
+                content = await upload.read(self._max_image_bytes + 1)
+                if not content or len(content) > self._max_image_bytes:
+                    raise HTTPException(status_code=422, detail="이미지 파일당 최대 크기는 10MB입니다.")
+                prepared.append((upload, content, self._validate_image_upload(upload, content)))
+
+            created_paths: list[Path] = []
+            try:
+                with self._db() as connection:
+                    self._accessible_task(connection, task_id, user)
+                    existing_count = connection.execute(
+                        "SELECT COUNT(*) FROM task_images WHERE task_id=?", (task_id,)
+                    ).fetchone()[0]
+                    if existing_count + len(prepared) > self._max_image_count:
+                        raise HTTPException(status_code=422, detail="업무당 이미지는 최대 5개까지 첨부할 수 있습니다.")
+                    self._upload_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    uploaded = []
+                    for offset, (upload, content, mime_type) in enumerate(prepared):
+                        storage_key = f"{task_id}/{uuid.uuid4().hex}{self._image_suffixes[mime_type]}"
+                        destination = self._private_image_path(storage_key)
+                        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                        destination.write_bytes(content)
+                        try:
+                            os.chmod(destination, 0o600)
+                        except OSError:
+                            pass
+                        created_paths.append(destination)
+                        filename = Path(upload.filename or "image").name[-255:] or "image"
+                        image_id = connection.execute(
+                            "INSERT INTO task_images(task_id,storage_key,original_filename,mime_type,size_bytes,sort_order,uploaded_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                            (task_id, storage_key, filename, mime_type, len(content), existing_count + offset, user["id"], self._now()),
+                        ).lastrowid
+                        row = connection.execute("SELECT * FROM task_images WHERE id=?", (image_id,)).fetchone()
+                        uploaded.append(self._image_view(row))
+                    self._audit(
+                        connection, user["id"], "TASK_IMAGE_UPLOADED", "TASK", task_id,
+                        after={"images": uploaded}, ip=ip_address,
+                    )
+                    return {"images": uploaded}
+            except self._integrity_error as exc:
+                for path in created_paths:
+                    path.unlink(missing_ok=True)
+                raise HTTPException(status_code=422, detail="업무당 이미지는 최대 5개까지 첨부할 수 있습니다.") from exc
+            except Exception:
+                for path in created_paths:
+                    path.unlink(missing_ok=True)
+                raise
+        finally:
+            for upload in images:
+                await upload.close()
 
     def get_task_history(self, task_id: int, user: Any) -> list[dict]:
         """Return the existing audit history after task-level authorization."""

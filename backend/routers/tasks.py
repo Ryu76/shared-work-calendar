@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Callable, Literal
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 try:
     from schemas.requests import ImageEditIn, TaskIn, TaskUpdateIn
     from services.task_service import TaskService
@@ -88,6 +88,20 @@ def create_router(
         return service.delete_task(
             task_id,
             user,
+            request.client.host if request.client else None,
+        )
+
+    @router.post("/api/tasks/{task_id}/images", status_code=status.HTTP_201_CREATED)
+    async def upload_task_images(
+        task_id: int,
+        request: Request,
+        images: list[UploadFile] = File(...),
+        user: Any = Depends(current_user),
+    ):
+        return await service.upload_task_images(
+            task_id,
+            images,
+            password_changed_user(user),
             request.client.host if request.client else None,
         )
 

@@ -920,64 +920,6 @@ def export_tasks_xlsx(
     )
 
 
-@app.post("/api/tasks/{task_id}/images", status_code=201)
-async def upload_task_images(
-    task_id: int, request: Request, images: list[UploadFile] = File(...), user: sqlite3.Row = Depends(current_user)
-):
-    """Store validated images outside the web root after task-level authorization."""
-    user = password_changed_user(user)
-    if not images or len(images) > MAX_IMAGE_COUNT:
-        raise HTTPException(status_code=422, detail="한 번에 이미지는 1개 이상 5개 이하만 업로드할 수 있습니다.")
-    prepared: list[tuple[UploadFile, bytes, str]] = []
-    try:
-        for upload in images:
-            content = await upload.read(MAX_IMAGE_BYTES + 1)
-            if not content or len(content) > MAX_IMAGE_BYTES:
-                raise HTTPException(status_code=422, detail="이미지 파일당 최대 크기는 10MB입니다.")
-            prepared.append((upload, content, validate_image_upload(upload, content)))
-
-        created_paths: list[Path] = []
-        try:
-            with db() as c:
-                accessible_task(c, task_id, user)
-                existing_count = c.execute("SELECT COUNT(*) FROM task_images WHERE task_id=?", (task_id,)).fetchone()[0]
-                if existing_count + len(prepared) > MAX_IMAGE_COUNT:
-                    raise HTTPException(status_code=422, detail="업무당 이미지는 최대 5개까지 첨부할 수 있습니다.")
-                UPLOAD_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-                uploaded = []
-                for offset, (upload, content, mime_type) in enumerate(prepared):
-                    storage_key = f"{task_id}/{uuid.uuid4().hex}{IMAGE_SUFFIXES[mime_type]}"
-                    destination = private_image_path(storage_key)
-                    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                    destination.write_bytes(content)
-                    try:
-                        os.chmod(destination, 0o600)
-                    except OSError:
-                        pass
-                    created_paths.append(destination)
-                    filename = Path(upload.filename or "image").name[-255:] or "image"
-                    image_id = c.execute(
-                        "INSERT INTO task_images(task_id,storage_key,original_filename,mime_type,size_bytes,sort_order,uploaded_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
-                        (task_id, storage_key, filename, mime_type, len(content), existing_count + offset, user["id"], now()),
-                    ).lastrowid
-                    row = c.execute("SELECT * FROM task_images WHERE id=?", (image_id,)).fetchone()
-                    uploaded.append(image_view(row))
-                audit(c, user["id"], "TASK_IMAGE_UPLOADED", "TASK", task_id, after={"images": uploaded},
-                      ip=request.client.host if request.client else None)
-                return {"images": uploaded}
-        except sqlite3.IntegrityError as exc:
-            for path in created_paths:
-                path.unlink(missing_ok=True)
-            raise HTTPException(status_code=422, detail="업무당 이미지는 최대 5개까지 첨부할 수 있습니다.") from exc
-        except Exception:
-            for path in created_paths:
-                path.unlink(missing_ok=True)
-            raise
-    finally:
-        for upload in images:
-            await upload.close()
-
-
 @app.post("/api/tasks/{task_id}/attachments", status_code=201)
 async def upload_task_attachments(
     task_id: int, request: Request, attachments: list[UploadFile] = File(...), user: sqlite3.Row = Depends(current_user)
@@ -1259,6 +1201,11 @@ app.include_router(
             image_view,
             rotate_private_image,
             IMAGE_SUFFIXES,
+            UPLOAD_DIR,
+            MAX_IMAGE_COUNT,
+            MAX_IMAGE_BYTES,
+            validate_image_upload,
+            sqlite3.IntegrityError,
         ),
         current_user,
         password_changed_user,
