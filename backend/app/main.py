@@ -107,6 +107,7 @@ SESSIONS: dict[str, tuple[int, datetime]] = {}
 # encoded hash, so stronger future settings can trigger a transparent rehash.
 PASSWORD_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2, hash_len=32, salt_len=16)
 SEOUL_TIMEZONE = ZoneInfo("Asia/Seoul")
+USER_REPOSITORY = UserRepository()
 
 
 def now() -> str:
@@ -343,7 +344,7 @@ def current_user(request: Request) -> sqlite3.Row:
     if not session or session[1] <= datetime.now(timezone.utc):
         raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
     with db() as c:
-        user = c.execute("SELECT * FROM users WHERE id=? AND is_active=1", (session[0],)).fetchone()
+        user = USER_REPOSITORY.find_active_by_id(c, session[0])
     if not user:
         SESSIONS.pop(token, None)
         raise HTTPException(status_code=401, detail="사용할 수 없는 계정입니다.")
@@ -389,7 +390,7 @@ app.include_router(
             SESSIONS,
             audit,
             sqlite3.IntegrityError,
-            UserRepository(),
+            USER_REPOSITORY,
         ),
         current_user,
         admin_required,

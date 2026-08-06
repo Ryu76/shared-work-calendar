@@ -1048,4 +1048,29 @@ Risk:
 - Before the progress update, `git status --short --untracked-files=all` listed only the three verified non-sensitive source files. A changed-path scan found no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
 
 Next Phase:
-- Continue the repository phase with one small behavior-preserving user-account persistence operation (preferably the password-change update) behind the existing service boundary, then run focused coverage and the full regression suite.
+- Continue the repository phase with the smallest remaining authentication-adjacent behavior-preserving slice: move the password-change update from `UserService` into `UserRepository`, then run focused authorization coverage and the full regression suite.
+
+## Codex Execution PRD — current-user repository slice (2026-08-06 17:44:33 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: most service SQL is still not repository-only, global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization are pending.
+- Added the small persistence-only `UserRepository.find_active_by_id` operation and moved only the active authenticated-user lookup used by `current_user` out of `backend/app/main.py`.
+- Preserved the existing bearer-token parsing, eight-hour session expiry check, inactive-account session invalidation, 401 status/detail behavior, all API URLs/request-response schemas, database schema/data, SQLCipher transaction behavior, key material, uploads, secrets, `.env`, notification delivery, deployment, and external-service behavior.
+- The existing `UserRepository` is now composed once and shared by `current_user` and `UserService`; the unchanged application contract still registers 44 routes and exactly one `GET /api/assignees` route. The direct active-user SQL is absent from `backend/app/main.py`.
+
+Modified Files:
+- `backend/app/main.py` — composes the shared user repository and delegates the active authenticated-user lookup.
+- `backend/repositories/user_repository.py` — adds the active-user-by-ID persistence operation.
+- `backend/test_main.py` — extends user-lifecycle regression coverage to verify a just-deactivated account's existing bearer token is rejected by `/api/me`.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused authorization regression: `python -m unittest test_main.CalendarApiTests.test_admin_user_lifecycle_validation_authorization_and_last_admin_protection -v` (from `backend`): **PASS** — 1 test in **2.450s**. It covers administrator-only lifecycle actions, last-admin protection, and the newly asserted invalidation of an already-issued token after account deactivation.
+- Static/contract verification: `python -m compileall -q app/main.py repositories/user_repository.py services/user_service.py main.py`; package title/44-route/single-assignees-route assertion; active-user repository delegation and extracted-query-absence assertions; and `git diff --check`: **PASS**.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...package route/repository assertion..." && git diff --check` (from `backend`): **PASS** — all **27 tests** passed in **97.017s**; JavaScript syntax, Python compilation, package import, unchanged 44-route contract, repository delegation/query-absence checks, and whitespace checks passed.
+
+Risk:
+- `UserService` still contains password-change, user-list, user-create, and user-update SQL; `TaskService`, `DashboardService`, `NotificationService`, and `MasterService` also still contain repository SQL. The PRD requirement that SQL reside only in repositories remains unfulfilled.
+- Before the progress update, `git status --short --untracked-files=all` listed only `backend/app/main.py`, `backend/repositories/user_repository.py`, and `backend/test_main.py`. A changed-path sensitive-file scan produced no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path; none is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining authentication-adjacent behavior-preserving slice: move the password-change update from `UserService` into `UserRepository`, then run focused authorization coverage and the full regression suite.

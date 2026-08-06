@@ -167,6 +167,9 @@ class CalendarApiTests(unittest.TestCase):
         user_updates = [row for row in audit.json() if row["action"] == "USER_UPDATED" and row["target_id"] == str(created_id)]
         self.assertTrue(user_updates)
         self.assertNotIn("reset-password-123", str(user_updates))
+        disabled = client.patch(f"/api/admin/users/{created_id}", headers=admin, json={"is_active": False})
+        self.assertEqual(disabled.status_code, 200, disabled.text)
+        self.assertEqual(client.get("/api/me", headers={"Authorization": "Bearer " + relogin.json()["token"]}).status_code, 401)
 
     def test_new_database_requires_a_bootstrap_secret(self):
         previous = os.environ.pop("WORK_CALENDAR_INITIAL_ADMIN_PASSWORD", None)
