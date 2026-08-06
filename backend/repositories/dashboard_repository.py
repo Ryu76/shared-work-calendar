@@ -51,3 +51,23 @@ class DashboardRepository:
             user_params.append(user_scope)
         user_sql += " GROUP BY u.id,u.name,u.login_id,u.is_active ORDER BY total DESC,u.name,u.id"
         return by_status, list(connection.execute(user_sql, user_params))
+
+    @staticmethod
+    def completed_calendar_rows(
+        connection: Any,
+        user: Any,
+        first_day: date,
+        next_month: date,
+    ) -> list[Any]:
+        """Return authorized completed-task rows with the legacy calendar ordering."""
+        sql = "SELECT t.* FROM tasks t WHERE t.deleted_at IS NULL"
+        params: list[Any] = []
+        if user["role"] != "ADMIN":
+            sql += " AND (t.created_by=? OR EXISTS(SELECT 1 FROM task_assignees ta WHERE ta.task_id=t.id AND ta.user_id=?))"
+            params.extend([user["id"], user["id"]])
+        params.extend([str(first_day), str(next_month)])
+        return list(connection.execute(
+            sql + " AND t.status='COMPLETED' AND t.completed_date>=? "
+            "AND t.completed_date<? ORDER BY t.completed_date,t.id",
+            params,
+        ))

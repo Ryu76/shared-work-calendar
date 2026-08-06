@@ -1548,3 +1548,26 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving DashboardService slice: move authorized completed-date report-calendar persistence into `DashboardRepository`, then run focused completed-calendar authorization coverage and the full regression suite.
+
+## Codex Execution PRD — completed-date report-calendar repository persistence slice (2026-08-06 23:29:36 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: Dashboard XLSX-export, Notification, and Master service SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `main.py` minimization remain pending.
+- Added the persistence-only `DashboardRepository.completed_calendar_rows` operation and moved only the authorized completed-date report-calendar task query from `DashboardService.completed_calendar` into it.
+- Preserved `GET /api/completed-calendar` URL, month request/response schema, strict `YYYY-MM` validation, member and administrator visibility scope, completed-status and completed-date month filtering, legacy completed-date/id ordering, task-view response projection, database schema/data, SQLCipher transaction behavior, uploads, DPAPI/key material, credentials, `.env`, notification delivery, deployment, and external-service behavior.
+- `DashboardService.completed_calendar` now delegates row retrieval to `DashboardRepository` and contains no `connection.execute(` call; `routers/dashboard.py` remains SQL-free and retains exactly one completed-calendar route.
+
+Modified Files:
+- `backend/repositories/dashboard_repository.py` — adds authorized completed-date calendar row persistence.
+- `backend/services/dashboard_service.py` — delegates only completed-date calendar persistence while retaining validation and response projection.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused completed-calendar regression: `python -m compileall -q app/main.py services/dashboard_service.py repositories/dashboard_repository.py routers/dashboard.py && python -m unittest test_main.CalendarApiTests.test_completed_date_report_calendar_uses_task_scope_and_month_validation -v && git diff --check` (from `backend`): **PASS** — 1 test in **2.156s**; Python compilation and whitespace validation passed. It covers member scope, administrator scope, completed-month filtering, and invalid month rejection.
+- Full verification: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python - <<'PY' ...AST-scoped completed-calendar repository-delegation/query-absence plus SQL-free dashboard-router/single-route assertions... PY && git diff --check` (from `backend`): **PASS** — all **29 tests** passed in **95.449s**; JavaScript syntax, Python compilation, completed-calendar repository boundary, SQL-free dashboard router, completed-calendar route contract, and whitespace checks passed.
+
+Risk:
+- `DashboardService` still contains XLSX-export SQL; `NotificationService` and `MasterService` also still contain SQL. The Codex PRD condition that SQL reside only in repositories remains unfulfilled; `app/main.py` also remains above the recommended 50 lines.
+- Before this progress update, `git status --short --untracked-files=all` listed only `backend/repositories/dashboard_repository.py` and `backend/services/dashboard_service.py`. The changed-path sensitive-file scan passed: no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving DashboardService slice: move authorized XLSX-export task-row retrieval into `DashboardRepository`, then run focused export authorization coverage and the full regression suite.

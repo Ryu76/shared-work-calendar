@@ -90,13 +90,10 @@ class DashboardService:
             else date(year, month_number + 1, 1)
         )
         with self._db() as connection:
-            sql, params = self._task_query_sql(user)
-            sql += (
-                " AND t.status='COMPLETED' AND t.completed_date>=? "
-                "AND t.completed_date<? ORDER BY t.completed_date,t.id"
+            rows = self._repository.completed_calendar_rows(
+                connection, user, first_day, next_month
             )
-            params.extend([str(first_day), str(next_month)])
-            return [self._task_view(connection, row) for row in connection.execute(sql, params)]
+            return [self._task_view(connection, row) for row in rows]
 
     def export_tasks_xlsx(
         self,
