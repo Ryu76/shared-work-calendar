@@ -1595,3 +1595,27 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving NotificationService slice: move local notification-preference persistence into a repository, then run focused notification authorization coverage and the full regression suite.
+
+## Codex Execution PRD — notification-preference repository persistence slice (2026-08-07)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: the remaining notification outbox queries and all Master service SQL remain outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `app/main.py` minimization remain pending.
+- Added the persistence-only `NotificationRepository.preference` operation and moved only lazy notification-preference creation/read from `NotificationService._preferences` into it.
+- Preserved `GET/PATCH /api/me/notification-preferences` URLs, request/response schema, default enabled values, lazy record creation, update and audit behavior, local-only delivery marker, authorization, SQLCipher transaction behavior, database schema/data, uploads, DPAPI/key material, credentials, `.env`, notification delivery, deployment, and external-service behavior.
+- `NotificationService._preferences` now delegates its persistence operation to `NotificationRepository`; `routers/notifications.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/notification_repository.py` — adds lazy notification-preference persistence.
+- `backend/services/notification_service.py` — delegates only lazy preference creation/read to the repository.
+- `backend/app/main.py` — wires the existing notification service to its repository without changing routes.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused notification-preference regression from `backend`: `python -m compileall -q app/main.py services/notification_service.py repositories/notification_repository.py routers/notifications.py && python -c "...AST-scoped preference query-absence and repository-operation assertions..." && python -c "...isolated HTTP preference default/update/read regression..." && git diff --check`: **PASS** — compilation, repository-boundary, endpoint default/update/read behavior, and whitespace checks passed.
+- Full verification from `backend`: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...AST-scoped preference repository-boundary and SQL-free notification-router assertions..." && git diff --check`: **PASS** — all **29 tests** passed in **107.037s**; JavaScript syntax, Python compilation, notification-preference repository boundary, SQL-free notification router, and whitespace checks passed. This includes due-date/local notification outbox preference and authorization coverage.
+
+Risk:
+- `NotificationService` still contains local outbox refresh/list/read/update persistence SQL, and `MasterService` still contains SQL. The Codex PRD condition that SQL reside only in repositories remains unfulfilled; `app/main.py` also remains above the recommended 50 lines.
+- The verified changed paths are source files plus this progress record. No database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving NotificationService slice: move notification-preference update and disabled-kind local outbox cleanup into `NotificationRepository`, then run focused due-date notification authorization coverage and the full regression suite.

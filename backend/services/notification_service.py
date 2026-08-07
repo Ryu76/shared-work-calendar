@@ -6,6 +6,11 @@ from typing import Any, Callable, ContextManager
 
 from fastapi import HTTPException
 
+try:
+    from repositories.notification_repository import NotificationRepository
+except ModuleNotFoundError:
+    from backend.repositories.notification_repository import NotificationRepository
+
 
 class NotificationService:
     """Manage a user's due-date preferences and private local outbox."""
@@ -17,23 +22,18 @@ class NotificationService:
         now: Callable[[], str],
         today_in_seoul: Callable[[], date],
         audit: Callable[..., None],
+        repository: NotificationRepository,
     ) -> None:
         self._db = db
         self._task_query_sql = task_query_sql
         self._now = now
         self._today_in_seoul = today_in_seoul
         self._audit = audit
+        self._repository = repository
 
     def _preferences(self, connection: Any, user_id: int) -> dict:
         """Return and lazily create the unchanged local-only preference record."""
-        connection.execute(
-            "INSERT INTO notification_preferences(user_id,due_soon_enabled,overdue_enabled,updated_at) "
-            "VALUES(?,1,1,?) ON CONFLICT(user_id) DO NOTHING",
-            (user_id, self._now()),
-        )
-        row = connection.execute(
-            "SELECT * FROM notification_preferences WHERE user_id=?", (user_id,)
-        ).fetchone()
+        row = self._repository.preference(connection, user_id, self._now())
         return {
             "due_soon_enabled": bool(row["due_soon_enabled"]),
             "overdue_enabled": bool(row["overdue_enabled"]),

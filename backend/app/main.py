@@ -40,6 +40,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from routers.users import create_router as create_users_router
     from repositories.auth_repository import AuthRepository
     from repositories.dashboard_repository import DashboardRepository
+    from repositories.notification_repository import NotificationRepository
     from repositories.task_repository import TaskRepository
     from repositories.user_repository import UserRepository
     from services.auth_service import AuthService
@@ -61,6 +62,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.routers.users import create_router as create_users_router
     from backend.repositories.auth_repository import AuthRepository
     from backend.repositories.dashboard_repository import DashboardRepository
+    from backend.repositories.notification_repository import NotificationRepository
     from backend.repositories.task_repository import TaskRepository
     from backend.repositories.user_repository import UserRepository
     from backend.services.auth_service import AuthService
@@ -665,7 +667,9 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
 # precedence over the legacy ``/api/tasks/{task_id}`` parameter route.
 app.include_router(
     create_notification_router(
-        NotificationService(db, task_query_sql, now, lambda: today_in_seoul(), audit),
+        NotificationService(
+            db, task_query_sql, now, lambda: today_in_seoul(), audit, NotificationRepository()
+        ),
         current_user,
         password_changed_user,
     )
