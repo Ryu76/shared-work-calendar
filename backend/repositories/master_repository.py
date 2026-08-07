@@ -16,6 +16,15 @@ class MasterRepository:
         )
 
     @staticmethod
+    def admin_organization_rows(connection: Any, query: str) -> Any:
+        """Return administrator organization rows with the legacy ordering and limit."""
+        return connection.execute(
+            "SELECT * FROM organizations WHERE name LIKE ? "
+            "ORDER BY is_active DESC,name LIMIT 100",
+            (f"%{query.strip()}%",),
+        )
+
+    @staticmethod
     def active_contact_rows(connection: Any, query: str) -> Any:
         """Return active contact autocomplete rows with the legacy ordering and limit."""
         return connection.execute(

@@ -1779,3 +1779,26 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving `MasterService` slice: move administrator organization-list persistence into `MasterRepository`, then run focused request-master authorization coverage and the full regression suite.
+
+## Codex Execution PRD — administrator organization-list repository persistence slice (2026-08-07 02:09:53 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: administrator organization/contact-update and audit-log SQL remain in `MasterService`; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `app/main.py` minimization remain pending.
+- Added the persistence-only `MasterRepository.admin_organization_rows` operation and moved only administrator organization-management list retrieval from `MasterService.admin_organizations` into it.
+- Preserved `GET /api/admin/organizations` URL, request/response schema, administrator-only router authorization, trimmed substring query behavior, active-first/name ordering, 100-row limit, organization response projection, SQLCipher transaction behavior, database schema/data, uploads, DPAPI/key material, credentials, `.env`, notification delivery, deployment, and external-service behavior.
+- `MasterService.admin_organizations` now delegates its row retrieval to `MasterRepository`; `routers/master.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/master_repository.py` — adds administrator organization-list persistence.
+- `backend/services/master_service.py` — delegates administrator organization-list retrieval while retaining response projection.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused request-master regression from `backend`: `python -m compileall -q app/main.py services/master_service.py repositories/master_repository.py routers/master.py test_main.py && python -m unittest test_main.CalendarApiTests.test_request_master_management_authorization_lifecycle_and_audit -v && python -c "...AST-scoped admin-organization query-absence and repository-operation assertions..." && git diff --check`: **PASS** — 1 test in **3.399s**; compilation, administrator organization listing, authorization, lifecycle/audit behavior, repository boundary, and whitespace validation passed.
+- Full verification from `backend`: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...AST-scoped admin-organization repository-boundary and SQL-free master-router assertions..." && git diff --check`: **PASS** — all **29 tests** passed in **143.718s**; JavaScript syntax, Python compilation, administrator organization-list repository boundary, SQL-free master router, and whitespace checks passed. This includes Phase 1 acceptance, master-management UI, task, dashboard, notification, completed-calendar, and XLSX regressions.
+
+Risk:
+- `MasterService` still contains administrator organization/contact-update and audit-log SQL, while `app/main.py` remains above the recommended 50 lines. The Codex PRD condition that SQL reside only in repositories remains unfulfilled.
+- Before committing, perform a changed-path sensitive-file scan. Database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, and secret files must remain excluded.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving `MasterService` slice: move administrator organization patch lookup persistence into `MasterRepository`, then run focused request-master authorization coverage and the full regression suite.

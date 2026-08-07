@@ -132,11 +132,7 @@ class MasterService:
     def admin_organizations(self, query: str) -> list[dict]:
         """Return the existing administrator organization-management list."""
         with self._db() as connection:
-            rows = connection.execute(
-                "SELECT * FROM organizations WHERE name LIKE ? "
-                "ORDER BY is_active DESC,name LIMIT 100",
-                (f"%{query.strip()}%",),
-            )
+            rows = self._repository.admin_organization_rows(connection, query)
             return [self._organization_view(row) for row in rows]
 
     def patch_organization(
