@@ -614,15 +614,6 @@ def task_history(c: sqlite3.Connection, task_id: int) -> list[dict]:
     return history
 
 
-def task_query_sql(user: sqlite3.Row) -> tuple[str, list]:
-    sql = "SELECT t.* FROM tasks t WHERE t.deleted_at IS NULL"
-    params=[]
-    if user["role"] != "ADMIN":
-        sql += " AND (t.created_by=? OR EXISTS(SELECT 1 FROM task_assignees ta WHERE ta.task_id=t.id AND ta.user_id=?))"
-        params=[user["id"], user["id"]]
-    return sql, params
-
-
 def excel_text(value) -> str:
     """Return spreadsheet-safe text without allowing a task value to become a formula."""
     text = "" if value is None else str(value)
@@ -691,7 +682,7 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
 app.include_router(
     create_notification_router(
         NotificationService(
-            db, task_query_sql, now, lambda: today_in_seoul(), audit, NotificationRepository()
+            db, TASK_REPOSITORY.authorized_task_query, now, lambda: today_in_seoul(), audit, NotificationRepository()
         ),
         current_user,
         password_changed_user,

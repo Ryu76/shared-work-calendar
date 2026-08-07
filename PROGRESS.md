@@ -1846,3 +1846,25 @@ Risk:
 
 Next Phase:
 - Continue with the smallest behavior-preserving composition SQL boundary: move task-scope/query helpers from `backend/app/bootstrap.py` into `TaskRepository`, then run focused task/dashboard coverage and the full regression suite.
+
+## Codex Execution PRD — authorized task-scope repository persistence slice (2026-08-07 03:25:12 UTC)
+Completed:
+- Re-read the authoritative Codex backend-refactoring PRD and current repository state. This slice moves the remaining notification task-scope SQL construction out of application composition.
+- Added `TaskRepository.authorized_task_query`, preserving the exact live-task, administrator/member authorization predicate, SQL text semantics, and parameter ordering previously used by notification refreshes.
+- Removed `task_query_sql` from `backend/app/bootstrap.py`; notification composition now injects the repository boundary directly. URLs, request/response formats, database schema/data, transaction and SQLCipher behavior, authorization, local-only notification delivery, uploads, DPAPI/key material, credentials, `.env`, deployment, and external-service behavior remain unchanged.
+
+Modified Files:
+- `backend/repositories/task_repository.py` — adds authorized task-scope query construction at the task persistence boundary.
+- `backend/app/bootstrap.py` — removes task-scope SQL from application composition and injects the repository operation into notifications.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused notification/task/dashboard regression from `backend`: compilation, `test_due_dates_local_notification_outbox_preferences_and_authorization`, `test_task_list_server_filters_pagination_and_calendar_month_validation`, and `test_completed_date_report_calendar_uses_task_scope_and_month_validation`: **PASS** — 3 tests in **6.996s**.
+- Full relevant regression from `backend`: `python -m unittest discover -s . -p 'test*.py' -v`, `node --check ../web/app.js`, Python compilation, AST confirmation that `bootstrap.py` has no `task_query_sql` and `TaskRepository` owns `authorized_task_query`, and `git diff --check`: **PASS** — all **29 tests** passed in **94.419s**; login/auth, task create/update/delete/read, dashboard, notifications, and error-path coverage passed.
+
+Risk:
+- `backend/app/bootstrap.py` still contains initialization, audit, task-history, and other persistence SQL. The strict PRD condition that SQL be limited to repositories and further composition minimization remain incomplete.
+- No database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret file is part of this slice.
+
+Next Phase:
+- Continue with the smallest behavior-preserving composition SQL boundary: move task-history persistence from `backend/app/bootstrap.py` into `TaskRepository`, then run focused task-history coverage and the full regression suite.

@@ -8,6 +8,23 @@ class TaskRepository:
     """Perform only task-related persistence queries."""
 
     @staticmethod
+    def authorized_task_query(user: Any) -> tuple[str, list[Any]]:
+        """Build the established live-task SQL scope for one caller.
+
+        Callers may compose this read scope with task-specific predicates, but the
+        authorization SQL itself remains at the task persistence boundary.
+        """
+        sql = "SELECT t.* FROM tasks t WHERE t.deleted_at IS NULL"
+        params: list[Any] = []
+        if user["role"] != "ADMIN":
+            sql += (
+                " AND (t.created_by=? OR EXISTS(SELECT 1 FROM task_assignees ta "
+                "WHERE ta.task_id=t.id AND ta.user_id=?))"
+            )
+            params = [user["id"], user["id"]]
+        return sql, params
+
+    @staticmethod
     def live_task_by_id(connection: Any, task_id: int) -> Any:
         """Return one non-deleted task for the established detail authorization flow."""
         return connection.execute(
