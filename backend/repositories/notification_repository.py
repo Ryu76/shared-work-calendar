@@ -18,3 +18,27 @@ class NotificationRepository:
         return connection.execute(
             "SELECT * FROM notification_preferences WHERE user_id=?", (user_id,)
         ).fetchone()
+
+    @staticmethod
+    def update_preferences(
+        connection: Any,
+        user_id: int,
+        due_soon_enabled: bool,
+        overdue_enabled: bool,
+        updated_at: str,
+    ) -> None:
+        """Persist preferences and remove only newly disabled local-outbox kinds."""
+        connection.execute(
+            "UPDATE notification_preferences SET due_soon_enabled=?,overdue_enabled=?,updated_at=? WHERE user_id=?",
+            (int(due_soon_enabled), int(overdue_enabled), updated_at, user_id),
+        )
+        if not due_soon_enabled:
+            connection.execute(
+                "DELETE FROM notification_outbox WHERE user_id=? AND kind IN ('DUE_SOON','DUE_TODAY')",
+                (user_id,),
+            )
+        if not overdue_enabled:
+            connection.execute(
+                "DELETE FROM notification_outbox WHERE user_id=? AND kind='OVERDUE'",
+                (user_id,),
+            )

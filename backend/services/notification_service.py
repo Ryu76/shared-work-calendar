@@ -87,21 +87,14 @@ class NotificationService:
     def update_preferences(self, payload: Any, user: Any, ip_address: str | None) -> dict:
         with self._db() as connection:
             before = self._preferences(connection, user["id"])
-            connection.execute(
-                "UPDATE notification_preferences SET due_soon_enabled=?,overdue_enabled=?,updated_at=? WHERE user_id=?",
-                (int(payload.due_soon_enabled), int(payload.overdue_enabled), self._now(), user["id"]),
+            self._repository.update_preferences(
+                connection,
+                user["id"],
+                payload.due_soon_enabled,
+                payload.overdue_enabled,
+                self._now(),
             )
             after = self._preferences(connection, user["id"])
-            if not payload.due_soon_enabled:
-                connection.execute(
-                    "DELETE FROM notification_outbox WHERE user_id=? AND kind IN ('DUE_SOON','DUE_TODAY')",
-                    (user["id"],),
-                )
-            if not payload.overdue_enabled:
-                connection.execute(
-                    "DELETE FROM notification_outbox WHERE user_id=? AND kind='OVERDUE'",
-                    (user["id"],),
-                )
             if before != after:
                 self._audit(
                     connection,
