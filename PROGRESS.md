@@ -1664,4 +1664,26 @@ Risk:
 - The final changed-path sensitive-file scan **PASSed** for `PROGRESS.md`, `backend/repositories/notification_repository.py`, and `backend/services/notification_service.py`; no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path is included.
 
 Next Phase:
-- Continue the repository phase with the smallest remaining behavior-preserving NotificationService slice: move local outbox refresh cleanup/insertion persistence into `NotificationRepository`, then run focused notification authorization coverage and the full regression suite.
+
+## Codex Execution PRD — notification refresh/list repository persistence slice (2026-08-07 00:51:05 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: all `MasterService` SQL remains outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `app/main.py` minimization remain pending.
+- Added persistence-only `NotificationRepository` operations for disabled local-outbox-kind cleanup, authorized incomplete due-task retrieval, idempotent local-outbox insertion, and caller-scoped paged local-outbox retrieval. Moved only those queries and mutations from `NotificationService` into the repository.
+- Preserved `GET /api/notifications` URL, request/response schema, unread filtering, ordering, pagination totals, caller-only visibility, local-only delivery marker, due-soon/today/overdue message and preference behavior, idempotent reminder creation/read state, task-description refresh behavior, transaction behavior, SQLCipher behavior, database schema/data, uploads, DPAPI/key material, credentials, `.env`, notification delivery, deployment, and external-service behavior.
+- `NotificationService` now contains zero `.execute(` calls; `routers/notifications.py` remains SQL-free. The service retains only due-date classification/message business logic and response projection.
+
+Modified Files:
+- `backend/repositories/notification_repository.py` — adds local outbox refresh and paged-list persistence operations.
+- `backend/services/notification_service.py` — delegates local outbox refresh/list persistence while retaining notification rules and response behavior.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused notification refresh/list regression from `backend`: `python -m compileall -q services/notification_service.py repositories/notification_repository.py routers/notifications.py app/main.py && python -m unittest test_main.CalendarApiTests.test_due_dates_local_notification_outbox_preferences_and_authorization -v && python -c "...AST-scoped NotificationService query-absence and repository-operation assertions..." && git diff --check`: **PASS** — 1 test in **3.367s**; compilation, due-date/local-outbox authorization behavior, repository boundary, and whitespace checks passed.
+- Full verification from `backend`: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...AST-scoped notification refresh/list repository-boundary and SQL-free notification-router assertions..." && git diff --check`: **PASS** — all **29 tests** passed in **96.573s**; JavaScript syntax, Python compilation, notification refresh/list repository boundary, SQL-free notification router, and whitespace checks passed. This includes Phase 1 acceptance, due-date/local outbox authorization, rendered notification behavior, statistics, completed-calendar, and XLSX regressions.
+
+Risk:
+- `MasterService` still contains SQL, while `app/main.py` remains above the recommended 50 lines. The Codex PRD condition that SQL reside only in repositories remains unfulfilled.
+- At the verified pre-progress-update scan, only `backend/repositories/notification_repository.py` and `backend/services/notification_service.py` were modified. Before commit, the changed-path sensitive-file scan must include this progress record; database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, and secret files must remain excluded.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving MasterService slice: move organization/contact autocomplete lookup persistence into a master repository, then run focused master authorization coverage and the full regression suite.

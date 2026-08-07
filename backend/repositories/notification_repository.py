@@ -5,7 +5,7 @@ from typing import Any
 
 
 class NotificationRepository:
-    """Perform only notification preference persistence operations."""
+    """Perform only local in-app notification persistence operations."""
 
     @staticmethod
     def preference(connection: Any, user_id: int, updated_at: str) -> Any:
@@ -51,3 +51,64 @@ class NotificationRepository:
             (read_at, notification_id, user_id),
         )
         return updated.rowcount
+
+    @staticmethod
+    def clear_disabled_due_kinds(
+        connection: Any, user_id: int, due_soon_enabled: bool, overdue_enabled: bool
+    ) -> None:
+        """Remove only local-outbox kinds disabled by the caller's preferences."""
+        if not due_soon_enabled:
+            connection.execute(
+                "DELETE FROM notification_outbox WHERE user_id=? AND kind IN ('DUE_SOON','DUE_TODAY')",
+                (user_id,),
+            )
+        if not overdue_enabled:
+            connection.execute(
+                "DELETE FROM notification_outbox WHERE user_id=? AND kind='OVERDUE'",
+                (user_id,),
+            )
+
+    @staticmethod
+    def due_task_rows(connection: Any, task_sql: str, params: list[Any]) -> Any:
+        """Return already-authorized incomplete tasks with a due date."""
+        return connection.execute(
+            task_sql + " AND t.status!='COMPLETED' AND t.due_date IS NOT NULL", params
+        )
+
+    @staticmethod
+    def add_due_notification(
+        connection: Any,
+        user_id: int,
+        task_id: int,
+        kind: str,
+        due_date: str,
+        message: str,
+        created_at: str,
+    ) -> None:
+        """Insert a local reminder without changing an existing read state."""
+        connection.execute(
+            "INSERT INTO notification_outbox(user_id,task_id,kind,due_date,message,created_at) "
+            "VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,task_id,kind,due_date) DO NOTHING",
+            (user_id, task_id, kind, due_date, message, created_at),
+        )
+
+    @staticmethod
+    def notification_page(
+        connection: Any, user_id: int, unread_only: bool, page: int, page_size: int
+    ) -> tuple[int, Any]:
+        """Return one caller-scoped local-outbox page and its unchanged total."""
+        where = "WHERE n.user_id=?"
+        params: list[Any] = [user_id]
+        if unread_only:
+            where += " AND n.read_at IS NULL"
+        total = connection.execute(
+            f"SELECT COUNT(*) FROM notification_outbox n {where}", params
+        ).fetchone()[0]
+        rows = connection.execute(
+            "SELECT n.id,n.task_id,n.kind,n.due_date,n.message,n.read_at,n.created_at,t.description,t.status "
+            "FROM notification_outbox n JOIN tasks t ON t.id=n.task_id "
+            + where
+            + " ORDER BY n.read_at IS NOT NULL,n.id DESC LIMIT ? OFFSET ?",
+            [*params, page_size, (page - 1) * page_size],
+        )
+        return total, rows

@@ -44,20 +44,15 @@ class NotificationService:
     def _refresh_due_notifications(self, connection: Any, user: Any) -> None:
         """Populate only the caller's local outbox; no external delivery is invoked."""
         preferences = self._preferences(connection, user["id"])
-        if not preferences["due_soon_enabled"]:
-            connection.execute(
-                "DELETE FROM notification_outbox WHERE user_id=? AND kind IN ('DUE_SOON','DUE_TODAY')",
-                (user["id"],),
-            )
-        if not preferences["overdue_enabled"]:
-            connection.execute(
-                "DELETE FROM notification_outbox WHERE user_id=? AND kind='OVERDUE'",
-                (user["id"],),
-            )
+        self._repository.clear_disabled_due_kinds(
+            connection,
+            user["id"],
+            preferences["due_soon_enabled"],
+            preferences["overdue_enabled"],
+        )
         task_sql, params = self._task_query_sql(user)
-        task_sql += " AND t.status!='COMPLETED' AND t.due_date IS NOT NULL"
         today = self._today_in_seoul()
-        for task in connection.execute(task_sql, params):
+        for task in self._repository.due_task_rows(connection, task_sql, params):
             due = date.fromisoformat(task["due_date"])
             if due < today:
                 kind = "OVERDUE"
@@ -74,10 +69,8 @@ class NotificationService:
             else:
                 continue
             if enabled:
-                connection.execute(
-                    "INSERT INTO notification_outbox(user_id,task_id,kind,due_date,message,created_at) "
-                    "VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,task_id,kind,due_date) DO NOTHING",
-                    (user["id"], task["id"], kind, str(due), message, self._now()),
+                self._repository.add_due_notification(
+                    connection, user["id"], task["id"], kind, str(due), message, self._now()
                 )
 
     def preferences(self, user: Any) -> dict:
@@ -112,19 +105,8 @@ class NotificationService:
         """Return only the caller's private local due-date outbox entries."""
         with self._db() as connection:
             self._refresh_due_notifications(connection, user)
-            where = "WHERE n.user_id=?"
-            params: list[int] = [user["id"]]
-            if unread_only:
-                where += " AND n.read_at IS NULL"
-            total = connection.execute(
-                f"SELECT COUNT(*) FROM notification_outbox n {where}", params
-            ).fetchone()[0]
-            rows = connection.execute(
-                "SELECT n.id,n.task_id,n.kind,n.due_date,n.message,n.read_at,n.created_at,t.description,t.status "
-                "FROM notification_outbox n JOIN tasks t ON t.id=n.task_id "
-                + where
-                + " ORDER BY n.read_at IS NOT NULL,n.id DESC LIMIT ? OFFSET ?",
-                [*params, page_size, (page - 1) * page_size],
+            total, rows = self._repository.notification_page(
+                connection, user["id"], unread_only, page, page_size
             )
             return {
                 "items": [dict(row) | {"is_read": row["read_at"] is not None} for row in rows],
