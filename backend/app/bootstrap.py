@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import secrets
 import uuid
-import zipfile
 import warnings
 from io import BytesIO
 from contextlib import contextmanager
@@ -15,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-from fastapi import Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse, Response
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -50,6 +49,14 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from services.notification_service import NotificationService
     from services.task_service import TaskService
     from services.user_service import UserService
+    from validators.uploads import (
+        ATTACHMENT_RULES,
+        IMAGE_SIGNATURES,
+        IMAGE_SUFFIXES,
+        MAX_IMAGE_BYTES,
+        validate_attachment_upload,
+        validate_image_upload,
+    )
 except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository root.
     from backend.core.config import load_settings
     from backend.core.logging import configure_logging
@@ -76,6 +83,14 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.services.notification_service import NotificationService
     from backend.services.task_service import TaskService
     from backend.services.user_service import UserService
+    from backend.validators.uploads import (
+        ATTACHMENT_RULES,
+        IMAGE_SIGNATURES,
+        IMAGE_SUFFIXES,
+        MAX_IMAGE_BYTES,
+        validate_attachment_upload,
+        validate_image_upload,
+    )
 
 # Keep the original backend-root configuration boundary after moving this module
 # beneath ``backend/app``. This preserves static and private-upload locations.
@@ -87,29 +102,10 @@ STATIC_DIR = SETTINGS.static_dir
 # after task-level authorization succeeds.
 UPLOAD_DIR = SETTINGS.upload_dir
 MAX_IMAGE_COUNT = 5
-MAX_IMAGE_BYTES = 10 * 1024 * 1024
 # Editing is intentionally bounded independently of compressed file size so a
 # decompression-bomb image cannot exhaust the local application host.
 MAX_IMAGE_PIXELS = 40_000_000
-IMAGE_SIGNATURES = {
-    "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
-    "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
-    "image/webp": lambda data: len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP",
-}
-IMAGE_SUFFIXES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 MAX_ATTACHMENT_COUNT = 10
-MAX_DOCUMENT_BYTES = 25 * 1024 * 1024
-MAX_VIDEO_BYTES = 100 * 1024 * 1024
-# Non-image files are limited to formats whose declared MIME type can be checked
-# against their bytes. Filename extensions and browser MIME claims are never trusted.
-ATTACHMENT_RULES = {
-    "application/pdf": ("DOCUMENT", ".pdf", MAX_DOCUMENT_BYTES),
-    "text/plain": ("DOCUMENT", ".txt", MAX_DOCUMENT_BYTES),
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ("DOCUMENT", ".docx", MAX_DOCUMENT_BYTES),
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ("DOCUMENT", ".xlsx", MAX_DOCUMENT_BYTES),
-    "video/mp4": ("VIDEO", ".mp4", MAX_VIDEO_BYTES),
-    "video/webm": ("VIDEO", ".webm", MAX_VIDEO_BYTES),
-}
 SESSIONS: dict[str, tuple[int, datetime]] = {}
 # Argon2id is deliberately the default (argon2-cffi's PasswordHasher type).  These
 # parameters meet the interactive-password baseline while keeping the values in the
@@ -367,17 +363,6 @@ def private_image_path(storage_key: str) -> Path:
     return private_upload_path(storage_key, "이미지를 찾을 수 없습니다.")
 
 
-def validate_image_upload(upload: UploadFile, content: bytes) -> str:
-    claimed_type = (upload.content_type or "").lower()
-    signature_check = IMAGE_SIGNATURES.get(claimed_type)
-    if not signature_check or not signature_check(content):
-        raise HTTPException(
-            status_code=422,
-            detail="이미지는 JPG, PNG, WEBP 파일만 허용하며 파일 형식과 실제 시그니처가 일치해야 합니다.",
-        )
-    return claimed_type
-
-
 def rotate_private_image(content: bytes, mime_type: str, direction: str) -> bytes:
     """Decode, rotate, and re-encode a private image within strict local limits.
 
@@ -417,42 +402,6 @@ def rotate_private_image(content: bytes, mime_type: str, direction: str) -> byte
     if not output or len(output) > MAX_IMAGE_BYTES or not IMAGE_SIGNATURES[mime_type](output):
         raise HTTPException(status_code=422, detail="편집 결과가 허용된 이미지 형식 또는 크기를 충족하지 않습니다.")
     return output
-
-
-def valid_office_zip(content: bytes, required_member: str) -> bool:
-    try:
-        with zipfile.ZipFile(BytesIO(content)) as archive:
-            names = set(archive.namelist())
-            return "[Content_Types].xml" in names and required_member in names
-    except (OSError, zipfile.BadZipFile):
-        return False
-
-
-def validate_attachment_upload(upload: UploadFile, content: bytes) -> tuple[str, str, str]:
-    claimed_type = (upload.content_type or "").lower()
-    rule = ATTACHMENT_RULES.get(claimed_type)
-    if not rule:
-        raise HTTPException(status_code=422, detail="문서는 PDF, TXT, DOCX, XLSX만, 동영상은 MP4, WEBM만 허용합니다.")
-    attachment_type, suffix, _ = rule
-    valid = (
-        (claimed_type == "application/pdf" and content.startswith(b"%PDF-"))
-        or (claimed_type == "text/plain" and b"\x00" not in content and _is_utf8_text(content))
-        or (claimed_type.endswith("wordprocessingml.document") and valid_office_zip(content, "word/document.xml"))
-        or (claimed_type.endswith("spreadsheetml.sheet") and valid_office_zip(content, "xl/workbook.xml"))
-        or (claimed_type == "video/mp4" and len(content) >= 12 and content[4:8] == b"ftyp")
-        or (claimed_type == "video/webm" and content.startswith(b"\x1aE\xdf\xa3"))
-    )
-    if not valid:
-        raise HTTPException(status_code=422, detail="첨부 파일의 MIME 형식과 실제 파일 구조가 일치하지 않습니다.")
-    return attachment_type, suffix, claimed_type
-
-
-def _is_utf8_text(content: bytes) -> bool:
-    try:
-        content.decode("utf-8")
-        return True
-    except UnicodeDecodeError:
-        return False
 
 
 def task_view(c: sqlite3.Connection, task: sqlite3.Row) -> dict:

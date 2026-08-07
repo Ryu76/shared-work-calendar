@@ -1937,3 +1937,26 @@ Risk:
 
 Next Phase:
 - Continue only with the next smallest behavior-preserving PRD boundary: inspect remaining composition helpers for extraction into their existing utility/validator/service boundaries, then run focused and full regression before any completion declaration.
+
+## Codex Execution PRD — final validation-boundary extraction and completion verification (2026-08-07 04:32:51 UTC)
+Completed:
+- Re-read the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` and inspected the current `main`, application composition, routers, services, repositories, middleware, core, utilities, validators, notification, scheduler, and regression coverage.
+- Moved private image and document/video MIME/signature validation into `backend/validators/uploads.py`. `backend/app/bootstrap.py` now injects those validators and their unchanged rule constants into `TaskService`; request URLs, request/response bodies, validation details/statuses, schema, data, private-file handling, and local-only notification behavior are unchanged.
+- The Codex PRD phases are now implemented: compact public entrypoints (`backend/main.py`: 16 lines; `backend/app/main.py`: 11 lines), application-factory composition, separated routers/services/repositories, global exception handler and response helper, request logger, environment-backed config, Pydantic request validation plus dedicated upload validator boundary, local notification service boundary, and scheduler lifecycle boundary.
+- Structural checks confirmed no direct `execute`, `executemany`, or `executescript` call in application composition or routers; persistence execution is isolated to repositories. Router URLs and response contracts remain unchanged.
+
+Modified Files:
+- `backend/validators/uploads.py` — dedicated private-upload validation rules and MIME/signature checks.
+- `backend/app/bootstrap.py` — imports and injects the validator boundary; removes local upload-validation implementations.
+- `PROGRESS.md` — final verified Codex PRD completion record.
+
+Tests:
+- Focused validation regressions from `backend`: private image upload, private image rotation, and private document/video attachment validation/authorization/deletion: **PASS** — 3 tests in **8.659s**. Validator-boundary structural check and `git diff --check` also passed.
+- Full relevant regression from `backend`: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app routers services repositories schemas core middleware utils validators background database.py test_main.py test_acceptance.py test_browser_ui.py`: **PASS** — all **30 tests** passed in **106.821s**. The complete architecture-boundary assertion passed and verifies login/auth, task create/update/delete/read, dashboard, validation/error paths, notification, attachment, export, calendar, factory lifecycle/global exception, and rendered browser coverage.
+
+Risk:
+- No remaining approved Codex backend-refactoring work was identified. The FastAPI `on_event` deprecation warnings are framework warnings only; changing lifecycle semantics is outside this completed behavior-preserving PRD.
+- No database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret file was changed. The changed-path sensitive-file scan passed.
+
+Next Phase:
+- Codex backend-refactoring PRD complete; no further changes are authorized by this scheduled job.
