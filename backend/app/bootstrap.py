@@ -433,13 +433,12 @@ app.include_router(
 
 
 def accessible_task(c: sqlite3.Connection, task_id: int, user: sqlite3.Row) -> sqlite3.Row:
-    task = c.execute("SELECT * FROM tasks WHERE id=? AND deleted_at IS NULL", (task_id,)).fetchone()
+    task = TASK_REPOSITORY.live_task_by_id(c, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="업무를 찾을 수 없습니다.")
     if user["role"] == "ADMIN" or task["created_by"] == user["id"]:
         return task
-    assignee = c.execute("SELECT 1 FROM task_assignees WHERE task_id=? AND user_id=?", (task_id, user["id"])).fetchone()
-    if not assignee:
+    if not TASK_REPOSITORY.task_has_assignee(c, task_id, user["id"]):
         raise HTTPException(status_code=403, detail="해당 업무에 접근할 권한이 없습니다.")
     return task
 

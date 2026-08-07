@@ -8,6 +8,21 @@ class TaskRepository:
     """Perform only task-related persistence queries."""
 
     @staticmethod
+    def live_task_by_id(connection: Any, task_id: int) -> Any:
+        """Return one non-deleted task for the established detail authorization flow."""
+        return connection.execute(
+            "SELECT * FROM tasks WHERE id=? AND deleted_at IS NULL", (task_id,)
+        ).fetchone()
+
+    @staticmethod
+    def task_has_assignee(connection: Any, task_id: int, user_id: int) -> bool:
+        """Report whether one user is assigned to the specified task."""
+        return bool(connection.execute(
+            "SELECT 1 FROM task_assignees WHERE task_id=? AND user_id=?",
+            (task_id, user_id),
+        ).fetchone())
+
+    @staticmethod
     def active_user_ids(connection: Any) -> set[int]:
         """Return identifiers eligible to be assigned to a task."""
         return {row["id"] for row in connection.execute("SELECT id FROM users WHERE is_active=1")}
