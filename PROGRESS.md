@@ -1824,3 +1824,25 @@ Risk:
 
 Next Phase:
 - Continue with the smallest behavior-preserving composition SQL boundary: move contact/task response-projection reads from `backend/app/bootstrap.py` to repository methods, then run focused task coverage and the full regression suite.
+
+## Codex Execution PRD — task response-projection repository persistence slice (2026-08-07 12:10 UTC)
+Completed:
+- Re-read the authoritative Codex backend-refactoring PRD and current repository state. The prior task authorization persistence boundary is present on `main`; this slice moves the contact and task response-projection database reads out of application composition.
+- Added persistence-only `TaskRepository` methods for task creator, assignees, requester-contact projection, image metadata, and attachment metadata. Reused `MasterRepository.contact_organization_name` for the contact response projection.
+- `contact_view` and `task_view` in `backend/app/bootstrap.py` now only transform repository results; neither contains direct database execution. API URLs, request/response formats, ordering, transaction behavior, SQLCipher behavior, schema/data, authorization, uploads, DPAPI/key material, credentials, `.env`, deployment, notification delivery, and external-service behavior remain unchanged.
+
+Modified Files:
+- `backend/repositories/task_repository.py` — adds task response-projection persistence methods.
+- `backend/app/bootstrap.py` — delegates contact/task response-projection reads to repositories.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused task/master regression from `backend`: compilation, `test_task_detail_update_history_and_deletion_authorization`, `test_request_master_management_authorization_lifecycle_and_audit`, AST confirmation that `contact_view` and `task_view` have no direct database execution, and `git diff --check`: **PASS** — 2 tests in **5.340s**.
+- Full relevant regression from `backend`: `python -m unittest discover -s . -p 'test*.py' -v`, `node --check ../web/app.js`, Python compilation, the response-projection AST boundary assertion, and `git diff --check`: **PASS** — all **29 tests** passed in **93.165s**; login/auth, task create/update/delete/read, dashboard, and error-path coverage passed.
+
+Risk:
+- `backend/app/bootstrap.py` still contains initialization, audit, task-scope/query, and notification SQL. The strict PRD condition that SQL be limited to repositories and further composition minimization remain incomplete.
+- No database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret file is part of this slice.
+
+Next Phase:
+- Continue with the smallest behavior-preserving composition SQL boundary: move task-scope/query helpers from `backend/app/bootstrap.py` into `TaskRepository`, then run focused task/dashboard coverage and the full regression suite.

@@ -135,6 +135,7 @@ SEOUL_TIMEZONE = ZoneInfo("Asia/Seoul")
 TASK_REPOSITORY = TaskRepository()
 DASHBOARD_REPOSITORY = DashboardRepository()
 USER_REPOSITORY = UserRepository()
+MASTER_REPOSITORY = MasterRepository()
 
 
 def now() -> str:
@@ -458,12 +459,12 @@ def organization_view(row: sqlite3.Row) -> dict:
 def contact_view(c: sqlite3.Connection, row: sqlite3.Row) -> dict:
     out = dict(row)
     out["is_active"] = bool(out["is_active"])
-    out["organization"] = c.execute("SELECT name FROM organizations WHERE id=?", (row["organization_id"],)).fetchone()["name"]
+    out["organization"] = MASTER_REPOSITORY.contact_organization_name(c, row["organization_id"])
     return out
 
 
 master_service = MasterService(
-    db, organization_view, contact_view, audit_log_view, now, audit, MasterRepository()
+    db, organization_view, contact_view, audit_log_view, now, audit, MASTER_REPOSITORY
 )
 
 def image_view(row: sqlite3.Row) -> dict:
@@ -584,15 +585,11 @@ def _is_utf8_text(content: bytes) -> bool:
 
 def task_view(c: sqlite3.Connection, task: sqlite3.Row) -> dict:
     out = dict(task)
-    out["created_by_name"] = c.execute("SELECT name FROM users WHERE id=?", (task["created_by"],)).fetchone()["name"]
-    out["assignees"] = [dict(row) for row in c.execute("SELECT u.id,u.name,u.login_id FROM task_assignees ta JOIN users u ON u.id=ta.user_id WHERE ta.task_id=? ORDER BY u.name", (task["id"],))]
-    out["contact"] = row_dict(c.execute("SELECT rc.id,rc.name,rc.phone,o.name organization FROM request_contacts rc JOIN organizations o ON o.id=rc.organization_id WHERE rc.id=?", (task["requester_contact_id"],)).fetchone())
-    out["images"] = [image_view(row) for row in c.execute(
-        "SELECT * FROM task_images WHERE task_id=? ORDER BY sort_order,id", (task["id"],)
-    )]
-    out["attachments"] = [attachment_view(row) for row in c.execute(
-        "SELECT * FROM task_attachments WHERE task_id=? ORDER BY created_at,id", (task["id"],)
-    )]
+    out["created_by_name"] = TASK_REPOSITORY.task_creator_name(c, task["created_by"])
+    out["assignees"] = [dict(row) for row in TASK_REPOSITORY.task_assignee_rows(c, task["id"])]
+    out["contact"] = row_dict(TASK_REPOSITORY.task_contact_row(c, task["requester_contact_id"]))
+    out["images"] = [image_view(row) for row in TASK_REPOSITORY.task_image_rows(c, task["id"])]
+    out["attachments"] = [attachment_view(row) for row in TASK_REPOSITORY.task_attachment_rows(c, task["id"])]
     return out
 
 

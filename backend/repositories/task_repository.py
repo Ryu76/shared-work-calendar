@@ -28,6 +28,45 @@ class TaskRepository:
         return {row["id"] for row in connection.execute("SELECT id FROM users WHERE is_active=1")}
 
     @staticmethod
+    def task_creator_name(connection: Any, user_id: int) -> str:
+        """Return the creator name used by the legacy task response projection."""
+        return connection.execute(
+            "SELECT name FROM users WHERE id=?", (user_id,)
+        ).fetchone()["name"]
+
+    @staticmethod
+    def task_assignee_rows(connection: Any, task_id: int) -> list[Any]:
+        """Return task assignees in the established task-view ordering."""
+        return list(connection.execute(
+            "SELECT u.id,u.name,u.login_id FROM task_assignees ta "
+            "JOIN users u ON u.id=ta.user_id WHERE ta.task_id=? ORDER BY u.name",
+            (task_id,),
+        ))
+
+    @staticmethod
+    def task_contact_row(connection: Any, contact_id: int) -> Any:
+        """Return the requester contact projection used by task views."""
+        return connection.execute(
+            "SELECT rc.id,rc.name,rc.phone,o.name organization FROM request_contacts rc "
+            "JOIN organizations o ON o.id=rc.organization_id WHERE rc.id=?",
+            (contact_id,),
+        ).fetchone()
+
+    @staticmethod
+    def task_image_rows(connection: Any, task_id: int) -> list[Any]:
+        """Return task image metadata in its established display ordering."""
+        return list(connection.execute(
+            "SELECT * FROM task_images WHERE task_id=? ORDER BY sort_order,id", (task_id,)
+        ))
+
+    @staticmethod
+    def task_attachment_rows(connection: Any, task_id: int) -> list[Any]:
+        """Return task attachment metadata in its established display ordering."""
+        return list(connection.execute(
+            "SELECT * FROM task_attachments WHERE task_id=? ORDER BY created_at,id", (task_id,)
+        ))
+
+    @staticmethod
     def list_tasks(
         connection: Any,
         user: Any,
