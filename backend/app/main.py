@@ -40,6 +40,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from routers.users import create_router as create_users_router
     from repositories.auth_repository import AuthRepository
     from repositories.dashboard_repository import DashboardRepository
+    from repositories.master_repository import MasterRepository
     from repositories.notification_repository import NotificationRepository
     from repositories.task_repository import TaskRepository
     from repositories.user_repository import UserRepository
@@ -62,6 +63,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.routers.users import create_router as create_users_router
     from backend.repositories.auth_repository import AuthRepository
     from backend.repositories.dashboard_repository import DashboardRepository
+    from backend.repositories.master_repository import MasterRepository
     from backend.repositories.notification_repository import NotificationRepository
     from backend.repositories.task_repository import TaskRepository
     from backend.repositories.user_repository import UserRepository
@@ -438,7 +440,9 @@ def contact_view(c: sqlite3.Connection, row: sqlite3.Row) -> dict:
     return out
 
 
-master_service = MasterService(db, organization_view, contact_view, audit_log_view, now, audit)
+master_service = MasterService(
+    db, organization_view, contact_view, audit_log_view, now, audit, MasterRepository()
+)
 
 def image_view(row: sqlite3.Row) -> dict:
     """Metadata deliberately excludes the private storage key."""

@@ -1686,4 +1686,27 @@ Risk:
 - At the verified pre-progress-update scan, only `backend/repositories/notification_repository.py` and `backend/services/notification_service.py` were modified. Before commit, the changed-path sensitive-file scan must include this progress record; database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, and secret files must remain excluded.
 
 Next Phase:
-- Continue the repository phase with the smallest remaining behavior-preserving MasterService slice: move organization/contact autocomplete lookup persistence into a master repository, then run focused master authorization coverage and the full regression suite.
+
+## Codex Execution PRD — active-organization autocomplete repository persistence slice (2026-08-07 01:07:50 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: remaining `MasterService` SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `app/main.py` minimization remain pending.
+- Added the persistence-only `MasterRepository.active_organization_rows` operation and moved only active organization-autocomplete retrieval from `MasterService.organizations` into it.
+- Preserved `GET /api/organizations` URL, request/response schema, authenticated/password-changed-user requirement, active-only visibility, trimmed substring matching, alphabetical ordering, 20-row limit, response projection, SQLCipher transaction behavior, database schema/data, uploads, DPAPI/key material, credentials, `.env`, notification delivery, deployment, and external-service behavior.
+- `MasterService.organizations` now delegates row retrieval to `MasterRepository`; `routers/master.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/master_repository.py` — adds active organization-autocomplete persistence.
+- `backend/services/master_service.py` — delegates only active organization-autocomplete retrieval while retaining response projection.
+- `backend/app/main.py` — wires the existing master service to its repository without changing routes.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused request-master regression from `backend`: `python -m compileall -q app/main.py services/master_service.py repositories/master_repository.py routers/master.py && python -m unittest test_main.CalendarApiTests.test_request_master_management_authorization_lifecycle_and_audit -v && python -c "...AST-scoped active-organization query-absence/repository-operation assertions..." && git diff --check`: **PASS** — 1 test in **2.422s**; compilation, master authorization/lifecycle/audit behavior, repository boundary, and whitespace checks passed.
+- Full verification from `backend`: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...AST-scoped active-organization repository-boundary assertions..." && git diff --check`: **PASS** — all **29 tests** passed in **99.628s**; JavaScript syntax, Python compilation, master active-organization repository boundary, and whitespace checks passed. This includes Phase 1 acceptance, master-management UI, task, dashboard, and notification regressions.
+
+Risk:
+- `MasterService` still contains contact autocomplete, create/reuse, administrator master-management, and audit-log SQL; `app/main.py` also remains above the recommended 50 lines. The Codex PRD condition that SQL reside only in repositories remains unfulfilled.
+- The pre-progress-update changed paths were only source files. A final changed-path sensitive-file scan must include this progress record; database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, and secret files must remain excluded.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving `MasterService` slice: move active request-contact autocomplete retrieval into `MasterRepository`, then run focused master authorization coverage and the full regression suite.

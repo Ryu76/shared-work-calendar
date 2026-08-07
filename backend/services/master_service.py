@@ -6,6 +6,11 @@ from typing import Any, Callable, ContextManager
 
 from fastapi import HTTPException
 
+try:
+    from repositories.master_repository import MasterRepository
+except ModuleNotFoundError:
+    from backend.repositories.master_repository import MasterRepository
+
 
 class MasterService:
     """Provide unchanged authenticated master-data operations."""
@@ -18,6 +23,7 @@ class MasterService:
         audit_log_view: Callable[[Any], dict],
         now: Callable[[], str],
         audit: Callable[..., None],
+        repository: MasterRepository,
     ) -> None:
         self._db = db
         self._organization_view = organization_view
@@ -25,14 +31,12 @@ class MasterService:
         self._audit_log_view = audit_log_view
         self._now = now
         self._audit = audit
+        self._repository = repository
 
     def organizations(self, query: str) -> list[dict]:
         """Return the existing active-organization autocomplete response."""
         with self._db() as connection:
-            rows = connection.execute(
-                "SELECT * FROM organizations WHERE is_active=1 AND name LIKE ? ORDER BY name LIMIT 20",
-                (f"%{query.strip()}%",),
-            )
+            rows = self._repository.active_organization_rows(connection, query)
             return [self._organization_view(row) for row in rows]
 
     def create_organization(self, payload: Any, user: Any, ip_address: str | None) -> dict:
