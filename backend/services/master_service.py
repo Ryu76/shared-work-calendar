@@ -70,12 +70,7 @@ class MasterService:
     def contacts(self, query: str) -> list[dict]:
         """Return the existing active request-contact autocomplete response."""
         with self._db() as connection:
-            rows = connection.execute(
-                "SELECT rc.* FROM request_contacts rc JOIN organizations o ON o.id=rc.organization_id "
-                "WHERE rc.is_active=1 AND o.is_active=1 AND (rc.name LIKE ? OR o.name LIKE ?) "
-                "ORDER BY rc.name, o.name LIMIT 20",
-                (f"%{query.strip()}%", f"%{query.strip()}%"),
-            )
+            rows = self._repository.active_contact_rows(connection, query)
             return [self._contact_view(connection, row) for row in rows]
 
     def contact_from_input(
