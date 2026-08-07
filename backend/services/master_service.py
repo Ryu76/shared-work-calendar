@@ -95,18 +95,15 @@ class MasterService:
             )
         else:
             organization_id = organization["id"]
-        contact = connection.execute(
-            "SELECT * FROM request_contacts WHERE name=? AND phone=? AND organization_id=?",
-            (payload.name, payload.phone, organization_id),
-        ).fetchone()
+        contact = self._repository.contact_by_identity(
+            connection, payload.name, payload.phone, organization_id
+        )
         if contact:
             return contact["id"]
         timestamp = self._now()
-        contact_id = connection.execute(
-            "INSERT INTO request_contacts(name,phone,organization_id,is_active,created_at,updated_at) "
-            "VALUES(?,?,?,1,?,?)",
-            (payload.name, payload.phone, organization_id, timestamp, timestamp),
-        ).lastrowid
+        contact_id = self._repository.create_contact(
+            connection, payload.name, payload.phone, organization_id, timestamp
+        )
         self._audit(
             connection,
             actor_id,
@@ -129,9 +126,7 @@ class MasterService:
             contact_id = self.contact_from_input(
                 connection, payload, user["id"], ip_address
             )
-            contact = connection.execute(
-                "SELECT * FROM request_contacts WHERE id=?", (contact_id,)
-            ).fetchone()
+            contact = self._repository.contact_by_id(connection, contact_id)
             return self._contact_view(connection, contact)
 
     def admin_organizations(self, query: str) -> list[dict]:

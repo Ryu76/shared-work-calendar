@@ -1756,3 +1756,26 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving `MasterService` slice: move request-contact create/reuse persistence into `MasterRepository`, then run focused request-master authorization coverage and the full regression suite.
+
+## Codex Execution PRD — request-contact create/reuse repository persistence slice (2026-08-07 01:55:41 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: administrator master-management and audit-log SQL remain in `MasterService`; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `app/main.py` minimization remain pending.
+- Added persistence-only `MasterRepository` operations for exact request-contact identity lookup, active contact insertion, and contact-by-ID retrieval. Moved request-contact create/reuse persistence from `MasterService.contact_from_input` and the follow-up row retrieval from `MasterService.create_contact` into the repository.
+- Preserved `POST /api/request-contacts` URL, request/response schema, 201 response status for first and duplicate contact submission, organization reuse/creation behavior, inactive contact reuse, authenticated/password-changed-user requirement, contact and organization audit events/payloads, transaction behavior, SQLCipher behavior, database schema/data, uploads, DPAPI/key material, credentials, `.env`, notification delivery, deployment, and external-service behavior.
+- `MasterService.contact_from_input` and `MasterService.create_contact` now delegate their request-contact persistence to `MasterRepository`; `routers/master.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/master_repository.py` — adds request-contact identity lookup, creation, and single-row retrieval persistence.
+- `backend/services/master_service.py` — delegates request-contact create/reuse persistence while retaining audit and response business behavior.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused request-master regression from `backend`: `python -m compileall -q app/main.py services/master_service.py repositories/master_repository.py routers/master.py test_main.py && python -m unittest test_main.CalendarApiTests.test_request_master_management_authorization_lifecycle_and_audit -v && python -c "...AST-scoped request-contact query-absence and repository-operation assertions..." && git diff --check`: **PASS** — 1 test in **2.439s**; compilation, contact create/reuse, organization creation/reuse, authorization, lifecycle, audit behavior, repository boundary, and whitespace validation passed.
+- Full verification from `backend`: `python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...AST-scoped request-contact repository-boundary and SQL-free master-router assertions..." && git diff --check`: **PASS** — all **29 tests** passed in **106.956s**; JavaScript syntax, Python compilation, request-contact repository boundary, SQL-free master router, and whitespace checks passed. This includes Phase 1 acceptance, master-management UI, task, dashboard, notification, completed-calendar, and XLSX regressions.
+
+Risk:
+- `MasterService` still contains administrator organization/contact-management and audit-log SQL, while `app/main.py` remains above the recommended 50 lines. The Codex PRD condition that SQL reside only in repositories remains unfulfilled.
+- Before committing, perform a changed-path sensitive-file scan. Database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, and secret files must remain excluded.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving `MasterService` slice: move administrator organization-list persistence into `MasterRepository`, then run focused request-master authorization coverage and the full regression suite.

@@ -46,3 +46,31 @@ class MasterRepository:
         return connection.execute(
             "SELECT * FROM organizations WHERE id=?", (organization_id,)
         ).fetchone()
+
+    @staticmethod
+    def contact_by_identity(
+        connection: Any, name: str, phone: str, organization_id: int
+    ) -> Any:
+        """Return the exact reusable request-contact row, including inactive rows."""
+        return connection.execute(
+            "SELECT * FROM request_contacts WHERE name=? AND phone=? AND organization_id=?",
+            (name, phone, organization_id),
+        ).fetchone()
+
+    @staticmethod
+    def create_contact(
+        connection: Any, name: str, phone: str, organization_id: int, timestamp: str
+    ) -> int:
+        """Insert an active request contact and return its legacy SQLite identifier."""
+        return connection.execute(
+            "INSERT INTO request_contacts(name,phone,organization_id,is_active,created_at,updated_at) "
+            "VALUES(?,?,?,1,?,?)",
+            (name, phone, organization_id, timestamp, timestamp),
+        ).lastrowid
+
+    @staticmethod
+    def contact_by_id(connection: Any, contact_id: int) -> Any:
+        """Return one request-contact row by its primary key."""
+        return connection.execute(
+            "SELECT * FROM request_contacts WHERE id=?", (contact_id,)
+        ).fetchone()
