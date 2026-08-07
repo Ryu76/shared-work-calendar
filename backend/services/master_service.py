@@ -42,19 +42,14 @@ class MasterService:
     def create_organization(self, payload: Any, user: Any, ip_address: str | None) -> dict:
         """Create or reuse an organization with the legacy audit behavior."""
         with self._db() as connection:
-            existing = connection.execute(
-                "SELECT * FROM organizations WHERE name=?", (payload.name,)
-            ).fetchone()
+            existing = self._repository.organization_by_name(connection, payload.name)
             if existing:
                 return self._organization_view(existing)
             timestamp = self._now()
-            organization_id = connection.execute(
-                "INSERT INTO organizations(name,is_active,created_at,updated_at) VALUES(?,1,?,?)",
-                (payload.name, timestamp, timestamp),
-            ).lastrowid
-            row = connection.execute(
-                "SELECT * FROM organizations WHERE id=?", (organization_id,)
-            ).fetchone()
+            organization_id = self._repository.create_organization(
+                connection, payload.name, timestamp
+            )
+            row = self._repository.organization_by_id(connection, organization_id)
             result = self._organization_view(row)
             self._audit(
                 connection,
@@ -81,15 +76,14 @@ class MasterService:
         ip_address: str | None = None,
     ) -> int:
         """Find or create reusable master records with the legacy audit behavior."""
-        organization = connection.execute(
-            "SELECT * FROM organizations WHERE name=?", (payload.organization,)
-        ).fetchone()
+        organization = self._repository.organization_by_name(
+            connection, payload.organization
+        )
         if not organization:
             timestamp = self._now()
-            organization_id = connection.execute(
-                "INSERT INTO organizations(name,is_active,created_at,updated_at) VALUES(?,1,?,?)",
-                (payload.organization, timestamp, timestamp),
-            ).lastrowid
+            organization_id = self._repository.create_organization(
+                connection, payload.organization, timestamp
+            )
             self._audit(
                 connection,
                 actor_id,

@@ -24,3 +24,25 @@ class MasterRepository:
             "ORDER BY rc.name, o.name LIMIT 20",
             (f"%{query.strip()}%", f"%{query.strip()}%"),
         )
+
+    @staticmethod
+    def organization_by_name(connection: Any, name: str) -> Any:
+        """Return the exact-name organization row, including inactive rows."""
+        return connection.execute(
+            "SELECT * FROM organizations WHERE name=?", (name,)
+        ).fetchone()
+
+    @staticmethod
+    def create_organization(connection: Any, name: str, timestamp: str) -> int:
+        """Insert an active organization and return its legacy SQLite identifier."""
+        return connection.execute(
+            "INSERT INTO organizations(name,is_active,created_at,updated_at) VALUES(?,1,?,?)",
+            (name, timestamp, timestamp),
+        ).lastrowid
+
+    @staticmethod
+    def organization_by_id(connection: Any, organization_id: int) -> Any:
+        """Return one organization row by its primary key."""
+        return connection.execute(
+            "SELECT * FROM organizations WHERE id=?", (organization_id,)
+        ).fetchone()

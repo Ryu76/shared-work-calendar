@@ -1733,3 +1733,26 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving `MasterService` slice: move organization create/reuse persistence into `MasterRepository`, then run focused request-master authorization coverage and the full regression suite.
+
+## Codex Execution PRD — organization create/reuse repository persistence slice (2026-08-07 01:48:00 UTC)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: remaining `MasterService` SQL, global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `app/main.py` minimization remain pending.
+- Added persistence-only `MasterRepository` operations for exact-name organization lookup, active organization insertion, and organization-by-ID retrieval. Moved organization create/reuse persistence from both `MasterService.create_organization` and the organization branch of `MasterService.contact_from_input` into the repository.
+- Preserved `POST /api/organizations` and `POST /api/request-contacts` URLs, request/response schemas, 201 response status for first and duplicate organization submission, existing inactive-organization reuse behavior, organization/contact audit events and payloads, authenticated/password-changed-user requirement, transaction behavior, SQLCipher behavior, database schema/data, uploads, DPAPI/key material, credentials, `.env`, notification delivery, deployment, and external-service behavior.
+- `MasterService.create_organization` now delegates all persistence to `MasterRepository`; its task-flow organization create/reuse branch also delegates its organization persistence. `routers/master.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/master_repository.py` — adds organization lookup, creation, and single-row retrieval persistence.
+- `backend/services/master_service.py` — delegates organization create/reuse persistence while retaining audit and response business behavior.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused request-master regression from `backend`: `python -m compileall -q app/main.py services/master_service.py repositories/master_repository.py routers/master.py test_main.py && python -m unittest test_main.CalendarApiTests.test_request_master_management_authorization_lifecycle_and_audit -v`: **PASS** — 1 test in **2.428s**; direct organization create/reuse, request-contact-triggered organization creation, authorization, lifecycle, and audit behavior passed.
+- Full verification from `backend`: repository-boundary AST checks, `python -m unittest discover -s . -p 'test*.py' -v`, `node --check ../web/app.js`, Python compilation, SQL-free master-router assertion, and `git diff --check`: **PASS** — all **29 tests** passed in **102.369s**; JavaScript syntax, Python compilation, organization create/reuse repository boundary, SQL-free master router, and whitespace checks passed. This includes Phase 1 acceptance, master-management UI, task, dashboard, notification, completed-calendar, and XLSX regressions.
+
+Risk:
+- `MasterService` still contains request-contact create/reuse, administrator master-management, and audit-log SQL; `app/main.py` also remains above the recommended 50 lines. The Codex PRD condition that SQL reside only in repositories remains unfulfilled.
+- Before committing, perform a changed-path sensitive-file scan. Database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, and secret files must remain excluded.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving `MasterService` slice: move request-contact create/reuse persistence into `MasterRepository`, then run focused request-master authorization coverage and the full regression suite.
