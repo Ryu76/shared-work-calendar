@@ -1868,3 +1868,25 @@ Risk:
 
 Next Phase:
 - Continue with the smallest behavior-preserving composition SQL boundary: move task-history persistence from `backend/app/bootstrap.py` into `TaskRepository`, then run focused task-history coverage and the full regression suite.
+
+## Codex Execution PRD — audit-event repository persistence slice (2026-08-07 03:40:24 UTC)
+Completed:
+- Re-read the authoritative Codex backend-refactoring PRD and current repository state. The preceding history and task-scope repository boundaries were already present on `main`; this slice moves the remaining generic audit-event insert out of application composition.
+- Added the persistence-only `AuditRepository.create` operation and changed the existing `audit` helper in `backend/app/bootstrap.py` to serialize the unchanged payload then delegate its insert to that repository.
+- Preserved every API URL, request/response format, audit action/target/data/IP/timestamp semantics, transaction behavior, SQLCipher behavior, database schema/data, authorization, uploads, DPAPI/key material, credentials, `.env`, deployment, notification delivery, and external-service behavior.
+
+Modified Files:
+- `backend/repositories/audit_repository.py` — adds generic audit-event insert persistence.
+- `backend/app/bootstrap.py` — composes the audit repository and removes direct audit SQL from the helper.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused audit/task regression from `backend`: compilation, `test_task_detail_update_history_and_deletion_authorization`, `test_audit_log_filters_authorization_validation_and_sensitive_redaction`, `test_task_create_preserves_multiple_assignees_and_audit_result`, AST confirmation that the composition `audit` helper has no direct database execution, and `git diff --check`: **PASS** — 3 tests in **5.792s**.
+- Full relevant regression from `backend`: `python -m unittest discover -s . -p 'test*.py' -v`, `node --check ../web/app.js`, Python compilation, AST confirmation that `AuditRepository` owns audit execution, and `git diff --check`: **PASS** — all **29 tests** passed in **93.521s**; login/auth, task create/update/delete/read, dashboard, notification, and error-path coverage passed.
+
+Risk:
+- `backend/app/bootstrap.py` still owns initialization/migration SQL and remains much larger than the PRD's recommended minimal composition entrypoint. The strict PRD condition that SQL be limited to repositories and further composition minimization remain incomplete.
+- No database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret file is part of this slice.
+
+Next Phase:
+- Continue with the smallest behavior-preserving initialization boundary: move schema/bootstrap migration execution from `backend/app/bootstrap.py` to an initialization repository or database boundary, then run focused bootstrap/migration coverage and the full regression suite.

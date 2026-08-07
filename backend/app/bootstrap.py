@@ -48,6 +48,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from routers.tasks import create_router as create_task_router
     from routers.users import create_router as create_users_router
     from repositories.auth_repository import AuthRepository
+    from repositories.audit_repository import AuditRepository
     from repositories.dashboard_repository import DashboardRepository
     from repositories.master_repository import MasterRepository
     from repositories.notification_repository import NotificationRepository
@@ -71,6 +72,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.routers.tasks import create_router as create_task_router
     from backend.routers.users import create_router as create_users_router
     from backend.repositories.auth_repository import AuthRepository
+    from backend.repositories.audit_repository import AuditRepository
     from backend.repositories.dashboard_repository import DashboardRepository
     from backend.repositories.master_repository import MasterRepository
     from backend.repositories.notification_repository import NotificationRepository
@@ -136,6 +138,7 @@ TASK_REPOSITORY = TaskRepository()
 DASHBOARD_REPOSITORY = DashboardRepository()
 USER_REPOSITORY = UserRepository()
 MASTER_REPOSITORY = MasterRepository()
+AUDIT_REPOSITORY = AuditRepository()
 
 
 def now() -> str:
@@ -334,9 +337,17 @@ def row_dict(row: sqlite3.Row | None):
 
 def audit(c: sqlite3.Connection, actor: int | None, action: str, target_type: str, target_id: int | str, before=None, after=None, ip: str | None = None):
     import json
-    c.execute("INSERT INTO audit_logs(actor_user_id,action,target_type,target_id,before_data,after_data,ip_address,created_at) VALUES(?,?,?,?,?,?,?,?)",
-              (actor, action, target_type, str(target_id), json.dumps(before, ensure_ascii=False) if before is not None else None,
-               json.dumps(after, ensure_ascii=False) if after is not None else None, ip, now()))
+    AUDIT_REPOSITORY.create(
+        c,
+        actor,
+        action,
+        target_type,
+        str(target_id),
+        json.dumps(before, ensure_ascii=False) if before is not None else None,
+        json.dumps(after, ensure_ascii=False) if after is not None else None,
+        ip,
+        now(),
+    )
 
 
 SENSITIVE_AUDIT_KEYS = {
