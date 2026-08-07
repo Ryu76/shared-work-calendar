@@ -1912,3 +1912,28 @@ Risk:
 
 Next Phase:
 - Continue with the smallest behavior-preserving composition boundary: extract FastAPI application creation/startup/shutdown wiring from `backend/app/bootstrap.py`, then run focused bootstrap/auth coverage and the full regression suite.
+
+## Codex Execution PRD — application factory composition slice (2026-08-07 04:14:50 UTC)
+Completed:
+- Re-read the authoritative Codex backend-refactoring PRD and current repository state. The preceding repository boundaries are present; this slice moves FastAPI construction, static mounting, global exception registration, request logging middleware, and startup/shutdown scheduler wiring out of `backend/app/bootstrap.py`.
+- Added `backend/app/factory.py:create_application`. It composes the established application title/version, `/assets` mount, `RequestLoggingMiddleware`, `unhandled_exception_handler`, database initialization callback, and deliberately local-only scheduler lifecycle. `bootstrap.py` now supplies only its existing configuration and initialization callback before registering the unchanged routers.
+- Added focused factory coverage that starts/stops the scheduler, invokes the supplied initialization callback exactly once, and verifies an unexpected endpoint failure retains the existing `500 {"detail":"서버 오류가 발생했습니다."}` contract. The unchanged public `main:app` import reports 44 routes.
+- Preserved all API URLs, request/response formats, database schema/data, SQLCipher transaction behavior, task/user/dashboard/auth behavior, private upload handling, DPAPI/key material, credentials, `.env`, deployment, notification delivery, and external-service behavior.
+
+Modified Files:
+- `backend/app/factory.py` — application/middleware/exception/lifecycle composition boundary.
+- `backend/app/bootstrap.py` — delegates FastAPI construction and lifecycle registration to the factory.
+- `backend/test_main.py` — focused lifecycle and global-error-contract regression.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused from `backend`: compilation; factory lifecycle/global-error regression; bootstrap-secret, login/password-change, task update/delete/read, and statistics coverage: **PASS** — 5 tests in **7.252s**.
+- Full relevant regression from `backend`: `python -m unittest discover -s . -p 'test*.py' -v`, `node --check ../web/app.js`, and Python compilation: **PASS** — all **30 tests** in **119.439s**. The suite covers login/auth, task create/update/delete/read, dashboard statistics, validation/authorization error paths, notifications, attachments, exports, calendars, and rendered browser flows.
+- Final structural verification: application/router/service-layer AST scan found no direct `execute`, `executemany`, or `executescript` call; `main.app` still has **44** routes; `git diff --check`: **PASS**.
+
+Risk:
+- `backend/app/bootstrap.py` remains a large compatibility/composition module, though the public `backend/main.py` and `backend/app/main.py` entrypoints are minimized and application construction/lifecycle wiring is now isolated. Further helper decomposition may still be needed before the strict PRD completion state can be declared.
+- No database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret file is part of this slice.
+
+Next Phase:
+- Continue only with the next smallest behavior-preserving PRD boundary: inspect remaining composition helpers for extraction into their existing utility/validator/service boundaries, then run focused and full regression before any completion declaration.

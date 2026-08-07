@@ -15,29 +15,19 @@ from zoneinfo import ZoneInfo
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-from fastapi import Depends, File, FastAPI, HTTPException, Request, UploadFile, status
+from fastapi import Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response
-from fastapi.staticfiles import StaticFiles
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from PIL import Image, UnidentifiedImageError
-
-try:
-    from background.scheduler import LocalNotificationScheduler
-    from core.exceptions import unhandled_exception_handler
-    from middleware.request_logging import RequestLoggingMiddleware
-except ModuleNotFoundError:
-    from backend.background.scheduler import LocalNotificationScheduler
-    from backend.core.exceptions import unhandled_exception_handler
-    from backend.middleware.request_logging import RequestLoggingMiddleware
-
 
 # Persistence is deliberately isolated: database.py enforces SQLCipher encryption
 # and gets its 256-bit key from the user's Windows DPAPI-protected key file.
 try:  # Imported as ``app.main`` with backend/ on sys.path.
     from core.config import load_settings
     from core.logging import configure_logging
+    from app.factory import create_application
     from database import DB_PATH, connect, sqlite3
     from schemas.requests import TaskIn, TaskUpdateIn
     from routers.auth import create_router as create_auth_router
@@ -63,6 +53,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
 except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository root.
     from backend.core.config import load_settings
     from backend.core.logging import configure_logging
+    from backend.app.factory import create_application
     from backend.database import DB_PATH, connect, sqlite3
     from backend.schemas.requests import TaskIn, TaskUpdateIn
     from backend.routers.auth import create_router as create_auth_router
@@ -119,16 +110,6 @@ ATTACHMENT_RULES = {
     "video/mp4": ("VIDEO", ".mp4", MAX_VIDEO_BYTES),
     "video/webm": ("VIDEO", ".webm", MAX_VIDEO_BYTES),
 }
-async def global_exception_handler(request: Request, error: Exception):
-    """Delegate unexpected HTTP failures to the central logging/error boundary."""
-    return await unhandled_exception_handler(request, error, LOGGER)
-
-
-app = FastAPI(title="Shared Work Calendar MVP", version="1.0.0")
-SCHEDULER = LocalNotificationScheduler()
-app.add_middleware(RequestLoggingMiddleware, logger=LOGGER)
-app.add_exception_handler(Exception, global_exception_handler)
-app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 SESSIONS: dict[str, tuple[int, datetime]] = {}
 # Argon2id is deliberately the default (argon2-cffi's PasswordHasher type).  These
 # parameters meet the interactive-password baseline while keeping the values in the
@@ -206,15 +187,9 @@ def init_db() -> None:
         BOOTSTRAP_REPOSITORY.initialize(c, hash_password, now)
 
 
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
-    SCHEDULER.start()
-
-
-@app.on_event("shutdown")
-def shutdown() -> None:
-    SCHEDULER.stop()
+app, SCHEDULER = create_application(
+    static_dir=STATIC_DIR, logger=LOGGER, initialize_database=init_db
+)
 
 
 def row_dict(row: sqlite3.Row | None):

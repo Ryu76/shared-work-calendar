@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ os.environ["WORK_CALENDAR_DB"] = _tmp.name
 os.environ["WORK_CALENDAR_UPLOAD_DIR"] = _upload_dir
 os.environ["WORK_CALENDAR_INITIAL_ADMIN_PASSWORD"] = BOOTSTRAP_PASSWORD
 from fastapi.testclient import TestClient
+from app.factory import create_application
 import main
 
 # Test discovery can import acceptance coverage before this module, leaving the
@@ -989,6 +991,31 @@ class CalendarApiTests(unittest.TestCase):
             client.get("/api/admin/audit-logs?created_from=2026-02-02&created_to=2026-02-01", headers=admin).status_code,
             422,
         )
+
+class ApplicationFactoryTests(unittest.TestCase):
+    def test_factory_runs_lifecycle_and_preserves_global_error_contract(self):
+        """Composition owns startup/shutdown, logging middleware, and unexpected errors."""
+        initialized: list[str] = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app, scheduler = create_application(
+                static_dir=Path(temp_dir),
+                logger=logging.getLogger("shared_work_calendar.factory_test"),
+                initialize_database=lambda: initialized.append("initialized"),
+            )
+
+            @app.get("/raised")
+            def raised() -> None:
+                raise RuntimeError("factory test failure")
+
+            self.assertFalse(scheduler.running)
+            with TestClient(app, raise_server_exceptions=False) as factory_client:
+                self.assertTrue(scheduler.running)
+                response = factory_client.get("/raised")
+            self.assertFalse(scheduler.running)
+
+        self.assertEqual(initialized, ["initialized"])
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json(), {"detail": "서버 오류가 발생했습니다."})
 
 
 if __name__ == "__main__":
