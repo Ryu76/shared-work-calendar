@@ -1890,3 +1890,25 @@ Risk:
 
 Next Phase:
 - Continue with the smallest behavior-preserving initialization boundary: move schema/bootstrap migration execution from `backend/app/bootstrap.py` to an initialization repository or database boundary, then run focused bootstrap/migration coverage and the full regression suite.
+
+## Codex Execution PRD — schema/bootstrap repository persistence slice (2026-08-07 03:56:36 UTC)
+Completed:
+- Re-read the authoritative Codex backend-refactoring PRD and current repository state. The preceding task authorization, response-projection, scoped-query, and audit persistence boundaries are present on `main`; this slice moves initialization and compatible migration SQL out of application composition.
+- Added persistence-only `BootstrapRepository.initialize` for the existing idempotent schema creation, `due_date` compatibility migration, due-date index, initial-admin presence check, and initial-admin insert. `backend/app/bootstrap.py:init_db` now owns only transaction composition and delegates persistence.
+- Preserved all API URLs, request/response formats, tables, indexes, triggers, compatible existing-database migration behavior, initial-admin environment requirement and Korean error message, password-hash behavior, transaction/SQLCipher behavior, authorization, uploads, DPAPI/key material, credentials, `.env`, deployment, notification delivery, and external-service behavior.
+
+Modified Files:
+- `backend/repositories/bootstrap_repository.py` — owns schema/bootstrap migration and initial-admin persistence.
+- `backend/app/bootstrap.py` — delegates initialization persistence to `BootstrapRepository`.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused bootstrap/auth/task/dashboard regression from `backend`: `test_new_database_requires_a_bootstrap_secret`, `test_due_date_column_migrates_a_preexisting_sqlite_tasks_table`, first-login/password-change, task update/delete/read, and dashboard statistics coverage: **PASS** — 5 tests in **8.399s**.
+- Full relevant regression from `backend`: `python -m unittest discover -s . -p 'test*.py' -v`, `node --check ../web/app.js`, Python compilation, AST confirmation that `app/bootstrap.py` has no direct `execute`/`executescript` calls and `BootstrapRepository` owns schema execution, and `git diff --check`: **PASS** — all **29 tests** passed in **93.376s**; login/auth, task create/update/delete/read, dashboard, notification, and error-path coverage passed.
+
+Risk:
+- `backend/app/bootstrap.py` still contains composition helpers and is much larger than the PRD's recommended minimal composition entrypoint. The strict completion condition requires an additional application-factory/composition extraction despite no direct SQL remaining in the module.
+- No database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret file is part of this slice.
+
+Next Phase:
+- Continue with the smallest behavior-preserving composition boundary: extract FastAPI application creation/startup/shutdown wiring from `backend/app/bootstrap.py`, then run focused bootstrap/auth coverage and the full regression suite.

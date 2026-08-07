@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import os
 import secrets
 import uuid
 import zipfile
@@ -49,6 +48,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from routers.users import create_router as create_users_router
     from repositories.auth_repository import AuthRepository
     from repositories.audit_repository import AuditRepository
+    from repositories.bootstrap_repository import BootstrapRepository
     from repositories.dashboard_repository import DashboardRepository
     from repositories.master_repository import MasterRepository
     from repositories.notification_repository import NotificationRepository
@@ -73,6 +73,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.routers.users import create_router as create_users_router
     from backend.repositories.auth_repository import AuthRepository
     from backend.repositories.audit_repository import AuditRepository
+    from backend.repositories.bootstrap_repository import BootstrapRepository
     from backend.repositories.dashboard_repository import DashboardRepository
     from backend.repositories.master_repository import MasterRepository
     from backend.repositories.notification_repository import NotificationRepository
@@ -139,6 +140,7 @@ DASHBOARD_REPOSITORY = DashboardRepository()
 USER_REPOSITORY = UserRepository()
 MASTER_REPOSITORY = MasterRepository()
 AUDIT_REPOSITORY = AuditRepository()
+BOOTSTRAP_REPOSITORY = BootstrapRepository()
 
 
 def now() -> str:
@@ -201,123 +203,7 @@ def db():
 
 def init_db() -> None:
     with db() as c:
-        c.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-              id INTEGER PRIMARY KEY, login_id TEXT UNIQUE NOT NULL,
-              password_hash TEXT NOT NULL, name TEXT NOT NULL,
-              role TEXT NOT NULL CHECK(role IN ('ADMIN','MEMBER')),
-              is_active INTEGER NOT NULL DEFAULT 1,
-              must_change_password INTEGER NOT NULL DEFAULT 1,
-              created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS organizations (
-              id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL,
-              is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS request_contacts (
-              id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL,
-              organization_id INTEGER NOT NULL REFERENCES organizations(id),
-              is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-              UNIQUE(name, phone, organization_id)
-            );
-            CREATE TABLE IF NOT EXISTS tasks (
-              id INTEGER PRIMARY KEY, requester_contact_id INTEGER NOT NULL REFERENCES request_contacts(id),
-              status TEXT NOT NULL CHECK(status IN ('RECEIVED','IN_PROGRESS','COMPLETED')),
-              description TEXT NOT NULL, received_date TEXT NOT NULL, completed_date TEXT, due_date TEXT,
-              created_by INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-              deleted_at TEXT, deleted_by INTEGER REFERENCES users(id),
-              CHECK((status = 'COMPLETED' AND completed_date IS NOT NULL) OR (status != 'COMPLETED' AND completed_date IS NULL))
-            );
-            CREATE TABLE IF NOT EXISTS task_assignees (
-              task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-              user_id INTEGER NOT NULL REFERENCES users(id), assigned_at TEXT NOT NULL,
-              PRIMARY KEY(task_id,user_id)
-            );
-            CREATE TABLE IF NOT EXISTS task_images (
-              id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-              storage_key TEXT UNIQUE NOT NULL, original_filename TEXT NOT NULL, mime_type TEXT NOT NULL,
-              size_bytes INTEGER NOT NULL CHECK(size_bytes > 0 AND size_bytes <= 10485760),
-              sort_order INTEGER NOT NULL, uploaded_by INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL
-            );
-            CREATE TRIGGER IF NOT EXISTS task_images_max_count
-            BEFORE INSERT ON task_images
-            WHEN (SELECT COUNT(*) FROM task_images WHERE task_id=NEW.task_id) >= 5
-            BEGIN SELECT RAISE(ABORT, '업무당 이미지는 최대 5개입니다.'); END;
-            -- Image edits are non-destructive revisions. The current image row is
-            -- updated to a private derivative while prior source files stay tracked
-            -- until the image itself is intentionally deleted.
-            CREATE TABLE IF NOT EXISTS task_image_edits (
-              id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-              image_id INTEGER NOT NULL REFERENCES task_images(id) ON DELETE CASCADE,
-              source_storage_key TEXT NOT NULL, result_storage_key TEXT UNIQUE NOT NULL,
-              direction TEXT NOT NULL CHECK(direction IN ('CLOCKWISE','COUNTERCLOCKWISE')),
-              edited_by INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_task_image_edits_image_created
-              ON task_image_edits(image_id, created_at, id);
-            -- Kept separate from legacy task_images so existing SQLite image rows
-            -- and their private storage paths survive the Phase 2 expansion intact.
-            CREATE TABLE IF NOT EXISTS task_attachments (
-              id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-              storage_key TEXT UNIQUE NOT NULL, original_filename TEXT NOT NULL, mime_type TEXT NOT NULL,
-              attachment_type TEXT NOT NULL CHECK(attachment_type IN ('DOCUMENT','VIDEO')),
-              size_bytes INTEGER NOT NULL CHECK(size_bytes > 0 AND size_bytes <= 104857600),
-              sha256 TEXT NOT NULL, uploaded_by INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL
-            );
-            CREATE TRIGGER IF NOT EXISTS task_attachments_max_count
-            BEFORE INSERT ON task_attachments
-            WHEN (SELECT COUNT(*) FROM task_attachments WHERE task_id=NEW.task_id) >= 10
-            BEGIN SELECT RAISE(ABORT, '업무당 문서/동영상 첨부는 최대 10개입니다.'); END;
-            CREATE TABLE IF NOT EXISTS audit_logs (
-              id INTEGER PRIMARY KEY, actor_user_id INTEGER REFERENCES users(id), action TEXT NOT NULL,
-              target_type TEXT NOT NULL, target_id TEXT NOT NULL, before_data TEXT, after_data TEXT,
-              ip_address TEXT, created_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS notification_preferences (
-              user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-              due_soon_enabled INTEGER NOT NULL DEFAULT 1 CHECK(due_soon_enabled IN (0,1)),
-              overdue_enabled INTEGER NOT NULL DEFAULT 1 CHECK(overdue_enabled IN (0,1)),
-              updated_at TEXT NOT NULL
-            );
-            -- This is a local in-app outbox only.  No external provider address,
-            -- credential, or delivery worker is stored or invoked by the application.
-            CREATE TABLE IF NOT EXISTS notification_outbox (
-              id INTEGER PRIMARY KEY,
-              user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-              task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-              kind TEXT NOT NULL CHECK(kind IN ('DUE_SOON','DUE_TODAY','OVERDUE')),
-              due_date TEXT NOT NULL,
-              message TEXT NOT NULL,
-              read_at TEXT,
-              created_at TEXT NOT NULL,
-              UNIQUE(user_id, task_id, kind, due_date)
-            );
-            -- Non-destructive Phase 2 migration: safe for populated SQLite DBs.
-            CREATE INDEX IF NOT EXISTS idx_tasks_live_received_status
-              ON tasks(deleted_at, received_date, status);
-            CREATE INDEX IF NOT EXISTS idx_task_assignees_user_task
-              ON task_assignees(user_id, task_id);
-            CREATE INDEX IF NOT EXISTS idx_notification_outbox_user_read
-              ON notification_outbox(user_id, read_at, id DESC);
-            CREATE INDEX IF NOT EXISTS idx_task_attachments_task_created
-              ON task_attachments(task_id, created_at, id);
-            """
-        )
-        # `CREATE TABLE IF NOT EXISTS` does not add columns to a pre-Phase-2
-        # database.  This idempotent ALTER preserves every existing task row.
-        task_columns = {row["name"] for row in c.execute("PRAGMA table_info('tasks')")}
-        if "due_date" not in task_columns:
-            c.execute("ALTER TABLE tasks ADD COLUMN due_date TEXT")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_live_due_date ON tasks(deleted_at, due_date, status)")
-        if not c.execute("SELECT 1 FROM users WHERE login_id='admin'").fetchone():
-            bootstrap_password = os.getenv("WORK_CALENDAR_INITIAL_ADMIN_PASSWORD")
-            if not bootstrap_password or len(bootstrap_password) < 8:
-                raise RuntimeError(
-                    "새 데이터베이스를 초기화하려면 8자 이상의 WORK_CALENDAR_INITIAL_ADMIN_PASSWORD를 설정해야 합니다."
-                )
-            c.execute("INSERT INTO users(login_id,password_hash,name,role,is_active,must_change_password,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
-                      ("admin", hash_password(bootstrap_password), "초기 관리자", "ADMIN", 1, 1, now(), now()))
+        BOOTSTRAP_REPOSITORY.initialize(c, hash_password, now)
 
 
 @app.on_event("startup")
