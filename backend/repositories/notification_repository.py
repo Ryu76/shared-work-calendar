@@ -42,3 +42,12 @@ class NotificationRepository:
                 "DELETE FROM notification_outbox WHERE user_id=? AND kind='OVERDUE'",
                 (user_id,),
             )
+
+    @staticmethod
+    def mark_read(connection: Any, notification_id: int, user_id: int, read_at: str) -> int:
+        """Mark only the caller's local outbox row read and return its update count."""
+        updated = connection.execute(
+            "UPDATE notification_outbox SET read_at=COALESCE(read_at,?) WHERE id=? AND user_id=?",
+            (read_at, notification_id, user_id),
+        )
+        return updated.rowcount

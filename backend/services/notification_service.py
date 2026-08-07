@@ -139,10 +139,9 @@ class NotificationService:
 
     def mark_read(self, notification_id: int, user: Any) -> dict:
         with self._db() as connection:
-            updated = connection.execute(
-                "UPDATE notification_outbox SET read_at=COALESCE(read_at,?) WHERE id=? AND user_id=?",
-                (self._now(), notification_id, user["id"]),
+            updated = self._repository.mark_read(
+                connection, notification_id, user["id"], self._now()
             )
-            if not updated.rowcount:
+            if not updated:
                 raise HTTPException(status_code=404, detail="알림을 찾을 수 없습니다.")
             return {"ok": True}

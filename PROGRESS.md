@@ -1642,3 +1642,26 @@ Risk:
 
 Next Phase:
 - Continue the repository phase with the smallest remaining behavior-preserving NotificationService slice: move local outbox read-mark persistence into `NotificationRepository`, then run focused notification authorization coverage and the full regression suite.
+
+## Codex Execution PRD — notification read-mark repository persistence slice (2026-08-07)
+Completed:
+- Re-read `PROGRESS.md` and the authoritative `docs/Codex_Execution_PRD_backend_refactoring.md` before starting this slice. Completion conditions remain unmet: notification outbox refresh/list persistence and all Master service SQL remain outside repositories; global exception handling, response helpers, validator/middleware/notification/scheduler layering, and further `app/main.py` minimization remain pending.
+- Added the persistence-only `NotificationRepository.mark_read` operation and moved only the caller-scoped local outbox read-mark update from `NotificationService.mark_read` into it.
+- Preserved `POST /api/notifications/{notification_id}/read` URL, request/response schema, caller ownership check, idempotent `read_at` behavior, unchanged 404 status/message for a missing or another user's notification, transaction behavior, SQLCipher behavior, database schema/data, uploads, DPAPI/key material, credentials, `.env`, notification delivery, deployment, and external-service behavior.
+- `NotificationService.mark_read` now delegates all persistence to `NotificationRepository`; `routers/notifications.py` remains SQL-free.
+
+Modified Files:
+- `backend/repositories/notification_repository.py` — adds caller-scoped local outbox read-mark persistence.
+- `backend/services/notification_service.py` — delegates only local notification read-mark persistence while retaining existing 404 and response behavior.
+- `PROGRESS.md` — this verified slice record.
+
+Tests:
+- Focused notification authorization/read-mark regression from `backend`: `python -m compileall -q services/notification_service.py repositories/notification_repository.py routers/notifications.py app/main.py && python -m unittest test_main.CalendarApiTests.test_due_dates_local_notification_outbox_preferences_and_authorization -v && git diff --check`: **PASS** — 1 test in **3.394s**; compilation, caller-scoped 404/200 behavior, preferences/outbox behavior, and whitespace validation passed.
+- Full verification from `backend`: `python -c "...AST-scoped read-mark query-absence and repository-operation assertions..." && python -m unittest discover -s . -p 'test*.py' -v && node --check ../web/app.js && python -m compileall -q main.py app/main.py routers services repositories schemas database.py core test_main.py test_acceptance.py test_browser_ui.py && python -c "...SQL-free notification-router assertion..." && git diff --check`: **PASS** — all **29 tests** passed in **103.500s**; JavaScript syntax, Python compilation, notification read-mark repository boundary, SQL-free notification router, and whitespace checks passed. This includes Phase 1 acceptance, due-date/local outbox authorization, rendered notification behavior, statistics, completed-calendar, and XLSX regressions.
+
+Risk:
+- `NotificationService` still contains local outbox refresh/list persistence SQL, and `MasterService` still contains SQL. The Codex PRD condition that SQL reside only in repositories remains unfulfilled; `app/main.py` also remains above the recommended 50 lines.
+- The final changed-path sensitive-file scan **PASSed** for `PROGRESS.md`, `backend/repositories/notification_repository.py`, and `backend/services/notification_service.py`; no database, DPAPI/key, certificate, `.env`, plaintext backup, private-upload, or secret path is included.
+
+Next Phase:
+- Continue the repository phase with the smallest remaining behavior-preserving NotificationService slice: move local outbox refresh cleanup/insertion persistence into `NotificationRepository`, then run focused notification authorization coverage and the full regression suite.
