@@ -1,0 +1,18 @@
+{
+  "task_id": "001-upg-base-001",
+  "status": "local_complete",
+  "summary": "현 소스의 mounted API 및 DB 동결을 확인하는 기존 테스트 45개 모두 PASS. verify.py를 통해 DB/키의 제품 경로가 사용되지 않는 고립된 환경에서 실행됨을 검증 완료. UPG-BASE-001 수용 기준 모두 만족.",
+  "tests": [
+    {
+      "command": "conda run --no-capture-output -n shared_calendar python -s scripts/verify.py --mode all",
+      "result": "Backend API, performance and Chromium regression: PASS\nBACKEND_TESTS=45 DURATION_SECONDS=109.267\nPython compilation: PASS\nweb/app.js syntax: PASS\nTracked whitespace: PASS\nUntracked file inventory: PASS\nUntracked text whitespace: PASS (9 files)\nVERIFICATION_PASS mode=all; disposable test resources removed"
+    }
+  ],
+  "external_blockers": [],
+  "remaining_local": [],
+  "changed_files": [
+    "docs/UPGRADE_ACCEPTANCE_LEDGER_20261003.md",
+    "PROGRESS.md",
+    "docs/autonomy/001-upg-base-001-attempt-9.json"
+  ]
+}

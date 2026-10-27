@@ -35,18 +35,26 @@ python -m uvicorn main:app --reload --host 127.0.0.1 --port 8010
 
 새 데이터베이스를 초기화하기 전에 8자 이상의 초기 관리자 비밀번호를 환경 변수로 제공해야 합니다. 예: `WORK_CALENDAR_INITIAL_ADMIN_PASSWORD`를 배포 비밀 관리 도구에서 설정하십시오. 초기 관리자 계정은 첫 실행 시 생성되고, 초기 비밀번호는 첫 로그인 직후 반드시 변경해야 업무 기능을 이용할 수 있습니다. 초기 계정 정보는 저장소·문서·로그에 노출하지 마십시오. 새 관리자 계정과 일반 이용자 계정은 사용자 관리 화면에서 만드십시오.
 
-## 테스트
+```bash
+conda env create -f environment.yml
+# 또는 이미 환경이 있다면 의존성만 업데이트
+conda env config vars set -n shared_calendar PYTHONNOUSERSITE=1
+conda run --no-capture-output -n shared_calendar python -m pip install -r requirements.txt
+```
+
+### 테스트
 
 ```bash
-cd backend
-python -m unittest -v test_main.py test_acceptance.py test_browser_ui.py
-node --check ../web/app.js
+# 전체: 실제 Chromium UI + API/성능 회귀 + Python 컴파일 + web/app.js 구문 검사
+conda run --no-capture-output -n shared_calendar python -s scripts/verify.py --mode all
+# 일부 검사: --mode backend 또는 --mode frontend
+# 모든 검사는 임시 DB/일회성 키/첨부 경로를 만들고 종료 후 정리합니다.
 ```
 
 One-time browser-test setup after installing the Python requirements:
 
 ```bash
-python -m playwright install chromium
+conda run --no-capture-output -n shared_calendar python -m playwright install chromium
 ```
 
 `test_acceptance.py` starts from an isolated temporary SQLite database and private upload directory, then verifies all PRD acceptance criteria through independently authenticated API clients. `test_browser_ui.py` starts a separate isolated Uvicorn process and uses Playwright Chromium to verify the rendered administrator master-management and task-filter/pagination flows. Neither test modifies the repository database.

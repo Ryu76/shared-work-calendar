@@ -1,0 +1,11 @@
+Backend API, performance and Chromium regression: PASS
+BACKEND_TESTS=45 DURATION_SECONDS=114.140
+Python compilation: PASS
+web/app.js syntax: PASS
+VERIFICATION_FAILED: Tracked whitespace failed (exit 2)
+PROGRESS.md:2043: new blank line at EOF.
+warning: in the working copy of 'PROGRESS.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/repositories/task_repository.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'requirements.txt', LF will be replaced by CRLF the next time Git touches it
+
+ERROR conda.cli.main_run:execute(47): `conda run python -s scripts/verify.py --mode all` failed. (See above for error)
