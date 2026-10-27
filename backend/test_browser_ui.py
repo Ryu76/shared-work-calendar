@@ -8,6 +8,7 @@ import base64
 import json
 import os
 import random
+import shutil
 import socket
 import subprocess
 import sys
@@ -37,6 +38,31 @@ def unused_local_port() -> int:
                 continue
         return candidate
     raise RuntimeError("Could not reserve a high local port for the browser test server")
+
+
+def native_namespace_path(path: str) -> str:
+    """Ensure a Windows path uses the extended-length namespace idempotently."""
+    if os.name != "nt":
+        return path
+    abs_path = os.path.abspath(path)
+    if abs_path.startswith("\\\\?\\"):
+        return abs_path
+    if abs_path.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + abs_path[2:]
+    return "\\\\?\\" + abs_path
+
+
+def remove_browser_fixture_tree(native_root: str) -> None:
+    """Bound sharing-violation retries to this test's owned, stopped-server tree."""
+    delays = (0, 0.05, 0.1, 0.2, 0.5, 1)
+    for attempt, delay in enumerate(delays):
+        time.sleep(delay)
+        try:
+            shutil.rmtree(native_root)
+            return
+        except PermissionError:
+            if attempt == len(delays) - 1:
+                raise
 
 
 class BrowserUiRegressionTests(unittest.TestCase):
@@ -84,13 +110,59 @@ class BrowserUiRegressionTests(unittest.TestCase):
             self._stop_server()
         else:
             self.fail("Browser test server did not become ready: " + startup_error)
-        self.playwright = sync_playwright().start()
-        self.browser = self.playwright.chromium.launch()
+
+        self.playwright = self._start_playwright_with_canonical_temp(lambda: sync_playwright().start())
+
+        self.downloads_dir = str(Path(self.temp_dir.name) / "downloads")
+        os.mkdir(self.downloads_dir)
+        canonical_downloads = self.downloads_dir
+        if canonical_downloads.startswith("\\\\?\\UNC\\"):
+            canonical_downloads = "\\\\" + canonical_downloads[8:]
+        elif canonical_downloads.startswith("\\\\?\\"):
+            canonical_downloads = canonical_downloads[4:]
+
+        self.browser = self.playwright.chromium.launch(downloads_path=canonical_downloads)
         self.page = self.browser.new_page(viewport={"width": 1280, "height": 900})
         self.page_errors = []
         self.responses = []
         self.page.on("pageerror", lambda error: self.page_errors.append(str(error)))
         self.page.on("response", lambda response: self.responses.append((response.request.method, response.status, response.url)))
+
+    def _start_playwright_with_canonical_temp(self, startup_callback):
+        fixture_ancestor = os.path.dirname(self.temp_dir.name)
+        canonical_ancestor = fixture_ancestor
+        if canonical_ancestor.startswith("\\\\?\\UNC\\"):
+            canonical_ancestor = "\\\\" + canonical_ancestor[8:]
+        elif canonical_ancestor.startswith("\\\\?\\"):
+            canonical_ancestor = canonical_ancestor[4:]
+
+        vars_to_restore = {}
+        for var in ("TMP", "TEMP", "TMPDIR"):
+            if var in os.environ:
+                vars_to_restore[var] = os.environ[var]
+            else:
+                vars_to_restore[var] = None
+
+        try:
+            for var in ("TMP", "TEMP", "TMPDIR"):
+                if var in os.environ:
+                    val = os.environ[var]
+                    if val.startswith("\\\\?\\"):
+                        canonical_val = val
+                        if canonical_val.startswith("\\\\?\\UNC\\"):
+                            canonical_val = "\\\\" + canonical_val[8:]
+                        else:
+                            canonical_val = canonical_val[4:]
+                        if os.path.normcase(os.path.normpath(canonical_val)) == os.path.normcase(os.path.normpath(canonical_ancestor)):
+                            os.environ[var] = canonical_ancestor
+
+            return startup_callback()
+        finally:
+            for var, original_val in vars_to_restore.items():
+                if original_val is None:
+                    os.environ.pop(var, None)
+                else:
+                    os.environ[var] = original_val
 
     def _cleanup_resources(self):
         if self._cleaned_up:
@@ -102,7 +174,14 @@ class BrowserUiRegressionTests(unittest.TestCase):
             self.playwright.stop()
         self._stop_server()
         if hasattr(self, "temp_dir"):
+            if os.name == "nt" and Path(self.temp_dir.name).exists():
+                # A successful nested attachment can exceed MAX_PATH. Remove the
+                # owned tree through the same native namespace, without ignoring
+                # cleanup errors, then detach TemporaryDirectory's finalizer.
+                native_root = native_namespace_path(self.temp_dir.name)
+                remove_browser_fixture_tree(native_root)
             self.temp_dir.cleanup()
+            self.assertFalse(Path(self.temp_dir.name).exists())
 
     def _stop_server(self):
         if self.server is not None:
@@ -302,10 +381,12 @@ class BrowserUiRegressionTests(unittest.TestCase):
         self.page.locator("#taskFilterError").get_by_text("접수일 시작일은 종료일보다 늦을 수 없습니다.").wait_for()
         self.page.locator("#resetFilters").click()
         self.page.locator("#search").fill("브라우저 목록 업무")
-        self.page.locator("#taskFilters").get_by_role("button", name="적용").click()
+        with self.page.expect_response(lambda response: "/api/tasks?" in response.url):
+            self.page.locator("#taskFilters").get_by_role("button", name="적용").click()
         # The administrator board initially renders only three cards for a status.
         # It requests the next three only after the explicit right-side load affordance.
         self.page.locator("#taskList .board-task").nth(2).wait_for()
+        self.page.wait_for_timeout(200)  # Ensure DOM update is complete before clicking load_more
         self.assertEqual(self.page.locator("#taskList .board-task").count(), 3)
         load_more = self.page.locator("#taskList .board-load-sentinel")
         self.assertEqual(load_more.count(), 1)

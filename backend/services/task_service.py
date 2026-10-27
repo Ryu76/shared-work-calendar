@@ -31,6 +31,7 @@ class TaskService:
         self,
         db: Callable[[], ContextManager[Any]],
         task_view: Callable[[Any, Any], dict],
+        task_views: Callable[[Any, list[Any]], list[dict]],
         accessible_task: Callable[[Any, int, Any], Any],
         contact_from_input: Callable[..., int],
         today_in_seoul: Callable[[], date],
@@ -56,6 +57,7 @@ class TaskService:
     ) -> None:
         self._db = db
         self._task_view = task_view
+        self._task_views = task_views
         self._accessible_task = accessible_task
         self._contact_from_input = contact_from_input
         self._today_in_seoul = today_in_seoul
@@ -162,7 +164,7 @@ class TaskService:
                 page_size,
             )
             return {
-                "items": [self._task_view(connection, row) for row in rows],
+                "items": self._task_views(connection, rows),
                 "pagination": {
                     "page": page,
                     "page_size": page_size,
@@ -589,4 +591,4 @@ class TaskService:
             rows = self._repository.received_date_calendar(
                 connection, user, str(first_day), str(next_month)
             )
-            return [self._task_view(connection, row) for row in rows]
+            return self._task_views(connection, rows)

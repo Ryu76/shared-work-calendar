@@ -20,12 +20,14 @@ class DashboardService:
         self,
         db: Callable[[], ContextManager[Any]],
         task_view: Callable[[Any, Any], dict],
-        task_export_workbook: Callable[[Any, list, Any], bytes],
+        task_views: Callable[[Any, list[Any]], list[dict]],
+        task_export_workbook: Callable[[Any, list, Any, Callable], bytes],
         audit: Callable[..., None],
         repository: DashboardRepository,
     ) -> None:
         self._db = db
         self._task_view = task_view
+        self._task_views = task_views
         self._task_export_workbook = task_export_workbook
         self._audit = audit
         self._repository = repository
@@ -91,7 +93,7 @@ class DashboardService:
             rows = self._repository.completed_calendar_rows(
                 connection, user, first_day, next_month
             )
-            return [self._task_view(connection, row) for row in rows]
+            return self._task_views(connection, rows)
 
     def export_tasks_xlsx(
         self,
@@ -127,7 +129,7 @@ class DashboardService:
             )
             if len(rows) > 10_000:
                 raise HTTPException(status_code=422, detail="엑셀 내보내기는 한 번에 최대 10,000건까지 가능합니다. 필터를 좁혀 다시 시도하세요.")
-            document = self._task_export_workbook(connection, rows, user)
+            document = self._task_export_workbook(connection, rows, user, self._task_views)
             self._audit(connection, user["id"], "TASKS_EXPORTED", "TASK_EXPORT", "FILTERED_SCOPE", after={
                 "count": len(rows), "status": status, "received_from": str(received_from) if received_from else None,
                 "received_to": str(received_to) if received_to else None, "due_from": str(due_from) if due_from else None,

@@ -1,0 +1,21 @@
+{
+  "task_id": "001-upg-base-001",
+  "status": "local_complete",
+  "summary": "Fixed authentication flow in test_upg_base_001.py with accurate 403 endpoint testing and HTTP 200 payload correctness. Created accurate frozen schema contract upg_base_contract.json. Fixed duplicate DOM fetches in app.js lazy load loop. Added negative explicit fetch assertion to test_browser_ui.py.",
+  "tests": [
+    {
+      "command": "conda run -n shared_calendar python scripts/verify.py --mode all",
+      "result": "PASS - verified test_upg_base_001.py schema and password change flow, and verified test_browser_ui.py does not fetch implicitly"
+    }
+  ],
+  "external_blockers": [],
+  "remaining_local": [],
+  "changed_files": [
+    "backend/test_upg_base_001.py",
+    "web/app.js",
+    "backend/test_browser_ui.py",
+    "backend/fixtures/upg_base_contract.json",
+    "PROGRESS.md",
+    "docs/UPGRADE_ACCEPTANCE_LEDGER_20261003.md"
+  ]
+}

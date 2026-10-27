@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import secrets
 import uuid
 import warnings
@@ -48,6 +49,7 @@ try:  # Imported as ``app.main`` with backend/ on sys.path.
     from services.master_service import MasterService
     from services.notification_service import NotificationService
     from services.task_service import TaskService
+    from services.task_projection_service import TaskProjectionService
     from services.user_service import UserService
     from validators.uploads import (
         ATTACHMENT_RULES,
@@ -82,6 +84,7 @@ except ModuleNotFoundError:  # Imported as ``backend.app.main`` from repository 
     from backend.services.master_service import MasterService
     from backend.services.notification_service import NotificationService
     from backend.services.task_service import TaskService
+    from backend.services.task_projection_service import TaskProjectionService
     from backend.services.user_service import UserService
     from backend.validators.uploads import (
         ATTACHMENT_RULES,
@@ -356,6 +359,12 @@ def private_upload_path(storage_key: str, missing_detail: str = "첨부 파일�
     candidate = (root / storage_key).resolve()
     if root != candidate and root not in candidate.parents:
         raise HTTPException(status_code=404, detail=missing_detail)
+    # Apply the Windows filesystem namespace only after resolving and enforcing
+    # containment. Nested private uploads can exceed the legacy MAX_PATH limit.
+    if os.name == "nt":
+        native = str(candidate)
+        if not native.startswith("\\\\?\\"):
+            candidate = Path("\\\\?\\UNC\\" + native[2:] if native.startswith("\\\\") else "\\\\?\\" + native)
     return candidate
 
 
@@ -445,7 +454,7 @@ def status_label(task_status: str) -> str:
     return {"RECEIVED": "접수", "IN_PROGRESS": "진행중", "COMPLETED": "처리"}[task_status]
 
 
-def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) -> bytes:
+def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row, task_views: Callable[[Any, list[Any]], list[dict]]) -> bytes:
     """Build a local XLSX workbook containing only already-authorized task rows."""
     workbook = Workbook()
     sheet = workbook.active
@@ -460,8 +469,9 @@ def task_export_workbook(c: sqlite3.Connection, rows, exported_by: sqlite3.Row) 
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center", vertical="center")
-    for task in rows:
-        view = task_view(c, task)
+
+    views = task_views(c, rows)
+    for view in views:
         sheet.append([
             view["id"], status_label(view["status"]), excel_text(view["description"]),
             excel_text(view["contact"]["name"]), excel_text(view["contact"]["phone"]),
@@ -509,10 +519,13 @@ app.include_router(
         password_changed_user,
     )
 )
+
+task_projection_service = TaskProjectionService(TASK_REPOSITORY, image_view, attachment_view)
+
 app.include_router(
     create_dashboard_router(
         DashboardService(
-            db, task_view, task_export_workbook, audit, DASHBOARD_REPOSITORY
+            db, task_view, task_projection_service.task_views, task_export_workbook, audit, DASHBOARD_REPOSITORY
         ),
         current_user,
         password_changed_user,
@@ -523,6 +536,7 @@ app.include_router(
         TaskService(
             db,
             task_view,
+            task_projection_service.task_views,
             accessible_task,
             master_service.contact_from_input,
             lambda: today_in_seoul(),

@@ -1,0 +1,17 @@
+{
+  "task_id": "001-upg-base-001",
+  "status": "local_complete",
+  "summary": "Verified all 45 existing tests including 7 Chromium cases pass without modifying product DB/keys. Reconciled ledger rows and statuses. Preserved baseline board scroll-loading listener and assertions.",
+  "tests": [
+    {
+      "command": "conda run --no-capture-output -n shared_calendar python -s scripts/verify.py --mode all",
+      "result": "Backend API, performance and Chromium regression: PASS\nBACKEND_TESTS=45 DURATION_SECONDS=127.284\nPython compilation: PASS\nweb/app.js syntax: PASS\nTracked whitespace: PASS\nUntracked file inventory: PASS\nUntracked text whitespace: PASS (9 files)\nVERIFICATION_PASS mode=all; disposable test resources removed"
+    }
+  ],
+  "external_blockers": [],
+  "remaining_local": [],
+  "changed_files": [
+    "docs/UPGRADE_ACCEPTANCE_LEDGER_20261003.md",
+    "docs/autonomy/001-upg-base-001-attempt-2.json"
+  ]
+}

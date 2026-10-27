@@ -398,3 +398,66 @@ class TaskRepository:
                 (str(task_id),),
             )
         )
+
+    @staticmethod
+    def users_by_ids(connection: Any, user_ids: list[int]) -> dict[int, str]:
+        """Return a mapping of user ID to name for the given user IDs."""
+        if not user_ids:
+            return {}
+        placeholders = ",".join("?" for _ in user_ids)
+        rows = connection.execute(f"SELECT id, name FROM users WHERE id IN ({placeholders})", user_ids)
+        return {row["id"]: row["name"] for row in rows}
+
+    @staticmethod
+    def contacts_by_ids(connection: Any, contact_ids: list[int]) -> dict[int, dict]:
+        """Return a mapping of contact ID to contact projection for the given IDs."""
+        if not contact_ids:
+            return {}
+        placeholders = ",".join("?" for _ in contact_ids)
+        rows = connection.execute(
+            f"SELECT rc.id, rc.name, rc.phone, o.name AS organization "
+            f"FROM request_contacts rc JOIN organizations o ON o.id = rc.organization_id "
+            f"WHERE rc.id IN ({placeholders})",
+            contact_ids
+        )
+        return {
+            row["id"]: {"id": row["id"], "name": row["name"], "phone": row["phone"], "organization": row["organization"]}
+            for row in rows
+        }
+
+    @staticmethod
+    def assignees_by_task_ids(connection: Any, task_ids: list[int]) -> list[Any]:
+        """Return assignees for the given task IDs in established task-view ordering."""
+        if not task_ids:
+            return []
+        placeholders = ",".join("?" for _ in task_ids)
+        return list(connection.execute(
+            f"SELECT ta.task_id, u.id, u.name, u.login_id FROM task_assignees ta "
+            f"JOIN users u ON u.id = ta.user_id WHERE ta.task_id IN ({placeholders}) "
+            f"ORDER BY ta.task_id, u.name",
+            task_ids
+        ))
+
+    @staticmethod
+    def images_by_task_ids(connection: Any, task_ids: list[int]) -> list[Any]:
+        """Return task image metadata for the given task IDs in established display ordering."""
+        if not task_ids:
+            return []
+        placeholders = ",".join("?" for _ in task_ids)
+        return list(connection.execute(
+            f"SELECT * FROM task_images WHERE task_id IN ({placeholders}) "
+            f"ORDER BY task_id, sort_order, id",
+            task_ids
+        ))
+
+    @staticmethod
+    def attachments_by_task_ids(connection: Any, task_ids: list[int]) -> list[Any]:
+        """Return task attachment metadata for the given task IDs in established display ordering."""
+        if not task_ids:
+            return []
+        placeholders = ",".join("?" for _ in task_ids)
+        return list(connection.execute(
+            f"SELECT * FROM task_attachments WHERE task_id IN ({placeholders}) "
+            f"ORDER BY task_id, created_at, id",
+            task_ids
+        ))

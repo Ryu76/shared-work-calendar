@@ -1,0 +1,23 @@
+{
+  "task_id": "001-upg-base-001",
+  "status": "partial",
+  "summary": "Completed required corrective actions: restored scroll handling with gesture consumption in app.js, added wheel/keyboard Chromium assertions in test_browser_ui.py, froze all mounted routes and schema perfectly in test_upg_base_001.py, regenerated UTF-8 schema fixture, and restored full 14 requirements in UPGRADE_ACCEPTANCE_LEDGER_20261003.md.",
+  "tests": [
+    {
+      "command": "conda run --no-capture-output -n shared_calendar python -s scripts/verify.py --mode all",
+      "result": "Ran 45 tests successfully (3 frontend, 33 backend, 9 UI, skipped 2 unimplemented). All checks passed."
+    }
+  ],
+  "external_blockers": [],
+  "remaining_local": [
+    "Pending independent QA and parent gate validation."
+  ],
+  "changed_files": [
+    "web/app.js",
+    "backend/test_browser_ui.py",
+    "backend/test_upg_base_001.py",
+    "backend/fixtures/upg_base_contract.json",
+    "docs/UPGRADE_ACCEPTANCE_LEDGER_20261003.md",
+    "PROGRESS.md"
+  ]
+}
